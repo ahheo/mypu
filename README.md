@@ -4,26 +4,31 @@ some personal python scripts for personal use (package as uuuu)
 
 ## Content
 
-- ffff.py
+- ffff.py > whoknows functions
 
->------------------------------whoknows functions-----------------------------<
+- cccc.py > functions operating on cube
 
-- cccc.py
+- gggg.py > geo related functions
 
->-------------------------functions operating on cube-------------------------<
+- pppp.py > plt related functions
 
-- gggg.py
+- rgd.py  > regriding functions
 
->----------------------------geo related functions----------------------------<
+- xxxx.py > xarray related functions
 
-- pppp.py
+## What tou will need
 
->----------------------------plt related functions----------------------------<
+```python
+[  numpy, scipy, pandas, geopandas,       iris, 
+ cartopy, osgeo, pyproj,   shapely, matplotlib]
+```
 
-- rgd.py
+## Installation
 
->-----------------------------regriding functions-----------------------------<
+```
+git clone https://github.com/ahheo/mypu
+pip install . -e
+```
 
-- xxxx.py
-
->--------------------------xarray related functions---------------------------<
+## Used by
+[climidx](https://github.com/ahheo/climidx "A python package for deriving climate indices based on climate data")
