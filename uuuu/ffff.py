@@ -24,6 +24,7 @@
 * ind_win_              : indices of a window in cylinder axis
 * inds_ss_              : extraction indices (n axes)
 * intsect_              : intersection of lists
+* is1dIter_             : if 1d Iterable
 * isGI_                 : if Iterator
 * isIter_               : if Iterable but not str or bytes
 * isMonth_              : string if a month
@@ -111,6 +112,7 @@ __all__ = ['aggr_func_',
            'ind_win_',
            'inds_ss_',
            'intsect_',
+           'is1dIter_',
            'isGI_',
            'isIter_',
            'isMonth_',
@@ -793,9 +795,18 @@ def iter_str_(iterable):
     Examples:
         >>> iter_str_([1, 2, 3, 1, 2, 3, 4, 5, 2, 6])
         Out: ['1', '2', '3', '1', '2', '3', '4', '5', '2', '6']
+        >>> iter_str_([1, 2, 'abc', (5, 6)])
+        Out: ['1', '2', 'abc', ('5', '6')]
+        >>> iter_str_([1, 2, 'abc', range(3)])
+        Out: ['1', '2', 'abc', ['0', '1', '2']]
     """
-    tmp = flt_l(iterable)
-    return [str(i) for i in tmp]
+    _f = _typef(iterable)
+    if not isIter_(iterable):
+        return str(iterable)
+    else:
+        return _f([iter_str_(i) for i in iterable])
+    #tmp = flt_l(iterable)
+    #return [str(i) for i in tmp]
 
 
 def ext_(s, sub=None):
@@ -1084,7 +1095,7 @@ def rSUM1d_(
     kwArgs:
         mode: see np.convolve
 
-    Example:
+    Examples:
         >>> rSUM1d_(y, 3)
         Out: array([ 3.,  6.,  9., 12.])
         >>> rSUM1d_(y, 3, mode='full')
@@ -1185,7 +1196,7 @@ def slctStrL_(
     """
     ... select items including/excluding sts(s) for a list of str ...
 
-    Example:
+    Examples:
         >>> x = ['aabbcc', 'aaccee', 'bbccdd', 'ddeeff']
         >>> slctStrL_(x, incl='aa')               # include aa
         Out: ['aabbcc', 'aaccee']
@@ -1233,7 +1244,7 @@ def latex_unit_(unit):
     """
     ... turn unit str into latex style ...
 
-    Example:
+    Examples:
         >>> latex_unit_('m3')
         Out: 'm$^{3}$'
         >>> latex_unit_('W m-2')
@@ -1249,7 +1260,7 @@ def p_least_(pl, y0, y1):
     """
     ... select periods within [y0, y1] from a list of periods ...
 
-    Example:
+    Examples:
         >>> p_least_(['1901-1950', '1951-2000',  '2001-2050', '2051-2100'],
                      1981, 2010)
         Out: ['1951-2000', '2001-2050']
@@ -1395,11 +1406,26 @@ def intsect_(*l):
         return l[0]
 
 
+def _typef(l):
+    if isinstance(l, str):
+        _f = ''.join
+    elif isinstance(l, np.ndarray):
+        _f = np.asarray
+    elif isinstance(l, (tuple, set)):
+        _f = type(l)
+    else:
+        _f = list
+    return _f
+
+
 def l_ind_(l, ind):
     """
     ... extract list (or other Iterable objects) by providing indices ...
 
-    Example:
+    returns:
+        the same type of input l if applicable (for most cases) otherwise list
+
+    Examples:
         >>> x = 'abcdefg'
         >>> l_ind_(x, [1, 2])
         Out: 'bc'
@@ -1410,14 +1436,7 @@ def l_ind_(l, ind):
         >>> l_ind_(set(x), np.arange(len(x))%2==0)
         Out: {'a', 'c', 'e', 'g'}
     """
-    if isinstance(l, str):
-        _f = ''.join
-    elif isinstance(l, np.ndarray):
-        _f = np.asarray
-    elif isinstance(l, (list, tuple, set)):
-        _f = type(l)
-    else:
-        _f = list
+    _f = _typef(l)
     if isIter_(ind, xi=(bool, np.bool_)):
         return _f([i for i, ii in zip(l, ind) if ii])
     elif isIter_(ind, xi=(int, np.integer)):
@@ -1470,7 +1489,7 @@ def isGI_(x):
     """
     ... if Iterator ...
 
-    Example:
+    Examples:
         >>> isGI_(flt_([1, 2]))
         Out: True
         >>> isGI_(flt_l([1, 2]))
@@ -1478,6 +1497,32 @@ def isGI_(x):
     """
     from typing import Iterator
     return isinstance(x, Iterator)
+
+
+def is1dIter_(x, XI=(str, bytes)):
+    """
+    ... if 1d (no-nesting) Iterable ...
+
+    Examples:
+        >>> is1dIter_('abc')
+        Out: True
+        >>> is1dIter_(['abc'])
+        Out: True
+        >>> is1dIter_(['abc', []])
+        Out: False
+        >>> is1dIter_(range(5))
+        Out: True
+        >>> is1dIter_([range(5)])
+        Out: False
+        >>> is1dIter_([1, 2, 'abc'])
+        Out: True
+    """
+    o = isIter_(x, XI=None)
+    if o and not isGI_(x):
+        o = o and all([not isIter_(i, XI=XI) for i in x])
+    else:
+        warnings.warn("ignored for Iterator or Generator!")
+    return o
 
 
 def isIter_(
@@ -1492,7 +1537,7 @@ def isIter_(
         xi: specifie the type(s) of elements
         XI: specifie the type(s) that x belongs not to
 
-    Example:
+    Examples:
         >>> isIter_([[1, 2], 'a'])
         Out: True
         >>> isIter_([[1, 2], 'a'], xi=list)
