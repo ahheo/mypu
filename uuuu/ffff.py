@@ -34,6 +34,7 @@
 * kde_                  : kernel distribution estimate
 * kde__                 : tranform before kde_
 * l__                   : start logging
+* l_flp_                : flip list
 * l_ind_                : extract list by providing indices
 * l2b_endian_           : return big endian copy
 * latex_unit_           : m s-1 -> m s$^{-1}$
@@ -122,6 +123,7 @@ __all__ = ['aggr_func_',
            'kde_',
            'kde__',
            'l__',
+           'l_flp_',
            'l_ind_',
            'l2b_endian_',
            'latex_unit_',
@@ -1442,6 +1444,17 @@ def l_ind_(l, ind):
     elif isIter_(ind, xi=(int, np.integer)):
         ind = rpt_(ind, len(l))
         return _f([l[i] for i in ind])
+
+
+def l_flp_(l):
+    """
+    ... flip list (or other Iterable objects) ...
+
+    Examples:
+        >>> l_flp_([(1, 2), (3, 4), (5, 6)])
+        Out: [(5, 6), (3, 4), (1, 2)]
+    """
+    return l_ind_(l, range(len(l) - 1, -1, -1))
 
 
 def dgt_(n):

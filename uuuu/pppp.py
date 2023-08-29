@@ -7,7 +7,7 @@ import cartopy.crs as ccrs
 import os
 import warnings
 
-from .ffff import nanMask_, kde__
+from .ffff import nanMask_, kde__, flt_, isIter_
 from .cccc import y0y1_of_cube, extract_period_cube
 
 
@@ -167,8 +167,9 @@ def pch_(
     ax = fig.add_subplot(nrow, ncol, n, projection=proj)
     if ext:
         ax.set_extent(ext, crs=ccrs.PlateCarree())
-    ax.coastlines('50m', linewidth=0.5) #coastlines
-    ax.outline_patch.set_visible(fr_on)
+    #ax.coastlines('50m', linewidth=0.5) #coastlines
+    #ax.outline_patch.set_visible(fr_on)
+    ax.set(frame_on=fr_on)
     pch = pcolormesh_cube(cube, axes=ax, **pcho)
     if ti is not None:
         ax.set_title(ti)
@@ -220,25 +221,24 @@ def pcolormesh_cube(
 def hatch_cube(
         cube,
         axes=None,
-        p=0.05,
         **kwArgs,
         ):
-    pD = dict(hatch='.', zorder=9, alpha=0.)
+    pD = dict(zorder=9, colors='none')
     pD.update(kwArgs)
     if axes is None:
         axes = plt.gca()
     lo0, la0 = cube.coord('longitude'), cube.coord('latitude')
-    cube_ = cube.copy(np.ma.masked_greater(cube.data, p))
+    #cube_ = cube.copy(np.ma.masked_greater(cube.data, p))
     if lo0.ndim == 1:
-        pch = iplt.pcolor(cube_, axes=axes, **pD)
+        pch = iplt.contourf(cube, axes=axes, **pD)
     else:
         if hasattr(lo0, 'has_bounds') and lo0.has_bounds():
             x, y = lo0.contiguous_bounds(), la0.contiguous_bounds()
         else:
             x, y = _2d_bounds(lo0.points, la0.points)
-        pch = axes.pcolor(x, y, cube_.data,
-                          transform=ccrs.PlateCarree(),
-                          **pD)
+        pch = axes.contourf(x, y, cube.data,
+                            transform=ccrs.PlateCarree(),
+                            **pD)
     return pch
 
 
@@ -316,11 +316,11 @@ def axs_shrink_(
 
 
 def _minmaxXYlm(ax):
-    if isinstance(ax, list):
-        xmin = min([i.get_position().x0 for i in ax])
-        ymin = min([i.get_position().y0 for i in ax])
-        xmax = max([i.get_position().x1 for i in ax])
-        ymax = max([i.get_position().y1 for i in ax])
+    if isIter_(ax):
+        xmin = min([i.get_position().x0 for i in flt_(ax)])
+        ymin = min([i.get_position().y0 for i in flt_(ax)])
+        xmax = max([i.get_position().x1 for i in flt_(ax)])
+        ymax = max([i.get_position().y1 for i in flt_(ax)])
     else:
         xmin, ymin = ax.get_position().p0
         xmax, ymax = ax.get_position().p1

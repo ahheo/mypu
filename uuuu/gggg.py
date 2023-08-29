@@ -5,7 +5,7 @@ import cartopy.crs as ccrs
 from osgeo import gdal
 from matplotlib.path import Path
 
-from .ffff import flt_l, isIter_
+from .ffff import isIter_, l_flp_
 
 
 __all__ = ['gpd_read',
@@ -16,31 +16,32 @@ __all__ = ['gpd_read',
 gpd_read = gpd.GeoDataFrame.from_file
 
 
-def _i_poly_to_path(poly):
+def _i_poly_to_path(poly, flp=False):
     def _is_closed(coords):
         _lcoords = list(coords)
         return np.array_equal(_lcoords[0], _lcoords[-1])
-
-    _c2p = lambda coords: Path(list(coords))
+    _verts = lambda x: l_flp_(list(x)) if flp else list(x)
+    _codes = lambda n: [Path.MOVETO] + [Path.LINETO]*(n - 2) + [Path.CLOSEPOLY]
+    _c2p = lambda x: Path(_verts(x), codes=_codes(len(list(x))))
     
     if hasattr(poly, 'coords') and _is_closed(poly.coords):
         return _c2p(poly.coords)
     elif (hasattr(poly, 'exterior') and hasattr(poly.exterior, 'coords') and
           _is_closed(poly.exterior.coords)):
-        return _c20(poly.exterior.coords)
+        return _c2p(poly.exterior.coords)
     elif hasattr(poly, 'geoms'):
         tmp = list(poly.geoms) 
-        return [_i_poly_to_path(i) for i in tmp]
+        return [_i_poly_to_path(i, flp=flp) for i in tmp]
     elif hasattr(poly, 'geometry'):
         tmp = list(poly.geometry)
-        return [_i_poly_to_path(i) for i in tmp]
+        return [_i_poly_to_path(i, flp=flp) for i in tmp]
 
 
-def poly_to_path_(poly):
+def poly_to_path_(poly, flp=False):
     if isinstance(poly, gpd.GeoDataFrame):
-        return _i_poly_to_path(poly)
+        return _i_poly_to_path(poly, flp=flp)
     elif isIter_(poly, xi=gpd.GeoDataFrame):
-        return [_i_poly_to_path(i) for i in poly]
+        return [_i_poly_to_path(i, flp=flp) for i in poly]
 
 
 def gTiff_read_(filename):
