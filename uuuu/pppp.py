@@ -7,7 +7,7 @@ import cartopy.crs as ccrs
 import os
 import warnings
 
-from .ffff import nanMask_, kde__, flt_, isIter_
+from .ffff import nanMask_, kde__, flt_, flt_l, isIter_
 from .cccc import y0y1_of_cube, extract_period_cube
 
 
@@ -32,11 +32,10 @@ __all__ = ['aligned_cb_',
            'heatmap',
            'hspace_ax_',
            'init_fig_',
-           'pch_',
-           'pch_eur_',
-           'pch_ll_',
-           'pch_swe_',
-           'pcolormesh_cube',
+           'imp_',
+           'imp_eur_',
+           'imp_ll_',
+           'imp_swe_',
            'pdf_iANDe_',
            'ts_eCube_',
            'wspace_ax_']
@@ -94,17 +93,14 @@ def _get_clo(cube):
     return clo
 
 
-def pch_swe_(
-        fig,
-        nrow,
-        ncol,
-        n,
+def imp_swe_(
         cube,
-        rg='data',
-        clo_=None,
-        ti=None,
-        pcho={},
-        fr_on=False,
+        *subplotspec,
+        fig=None,
+        func="pcolormesh",
+        rg=None,
+        axK_={},
+        pK_={},
         ):
     ext = _mapext(rg=rg, cube=cube)
     if isinstance(clo_, (int, float)):
@@ -114,66 +110,72 @@ def pch_swe_(
     else:
         clo = _clo_ext(ext, h_=clo_)
     proj = ccrs.NorthPolarStereo(central_longitude=clo)
-    return pch_(fig, nrow, ncol, n, cube, proj,
-                ext=ext, ti=ti, pcho=pcho, fr_on=fr_on)
+    return imp_(cube, *subplotspec,
+                fig=fig,
+                func=func,
+                proj=proj,
+                ext=ext,
+                axK_=axK_,
+                pK_=pK_,
+                )
 
 
-def pch_eur_(
-        fig,
-        nrow,
-        ncol,
-        n,
+def imp_eur_(
         cube,
+        *subplotspec,
+        fig=None,
+        func="pcolormesh",
         rg=None,
-        ti=None,
-        pcho={},
-        fr_on=False,
+        axK_={},
+        pK_={},
         ):
-    ext = _mapext(rg=rg, cube=cube)
-    proj = ccrs.EuroPP()
-    return pch_(fig, nrow, ncol, n, cube, proj,
-                ext=ext, ti=ti, pcho=pcho, fr_on=fr_on)
+    return imp_(cube, *subplotspec,
+                fig=fig,
+                func=func,
+                proj=ccrs.EuroPP(),
+                ext=_mapext(rg=rg, cube=cube),
+                axK_=axK_,
+                pK_=pK_,
+                )
 
 
-def pch_ll_(
-        fig,
-        nrow,
-        ncol,
-        n,
+def imp_ll_(
         cube,
+        *subplotspec,
+        fig=None,
+        func="pcolormesh",
         rg=None,
-        ti=None,
-        pcho={},
-        fr_on=False,
+        axK_={},
+        pK_={},
         ):
-    ext = _mapext(rg=rg, cube=cube)
-    proj = ccrs.PlateCarree()
-    return pch_(fig, nrow, ncol, n, cube, proj,
-                ext=ext, ti=ti, pcho=pcho, fr_on=fr_on)
+    return imp_(cube, *subplotspec,
+                fig=fig,
+                func=func,
+                proj=ccrs.PlateCarree(),
+                ext=_mapext(rg=rg, cube=cube),
+                axK_=axK_,
+                pK_=pK_,
+                )
 
 
-def pch_(
-        fig,
-        nrow,
-        ncol,
-        n,
+def imp_(
         cube,
-        proj,
+        *subplotspec,
+        fig=None,
+        func="pcolormesh",
+        proj=None,
         ext=None,
-        ti=None,
-        pcho={},
-        fr_on=False,
+        axK_={},
+        pK_={},
         ):
-    ax = fig.add_subplot(nrow, ncol, n, projection=proj)
+    fig = plt.gcf() if fig is None else fig
+    ax = fig.add_subplot(*subplotspec, projection=proj)
     if ext:
         ax.set_extent(ext, crs=ccrs.PlateCarree())
-    #ax.coastlines('50m', linewidth=0.5) #coastlines
-    #ax.outline_patch.set_visible(fr_on)
-    ax.set(frame_on=fr_on)
-    pch = pcolormesh_cube(cube, axes=ax, **pcho)
-    if ti is not None:
-        ax.set_title(ti)
-    return (ax, pch)
+    axK_.setdefault("frame_on", False)
+    ax.set(**axK_)
+    o = _ll_cube(cube, axes=ax, func=func, **pK_)
+    return (ax, o)
 
 
 def _clo_ext(ext, h_=None):
@@ -184,62 +186,52 @@ def _clo_ext(ext, h_=None):
     return clo
 
 
-def _mapext(rg='data', cube=None):
+def _mapext(rg={}, cube=None):
+    o = {}
+    if cube:
+        lo0 = cube.coord('longitude').points
+        la0 = cube.coord('latitude').points
+        o.update(dict(longitude=[lo0.min(), lo0.max()],
+                      latitude=[la0.min(), la0.max()]))
     if isinstance(rg, dict):
-        ext = flt_l([rg['longitude'], rg['latitude']])
-    elif cube and rg == 'data':
-        ext = [np.min(cube.coord('longitude').points),
-               np.max(cube.coord('longitude').points),
-               np.min(cube.coord('latitude').points),
-               np.max(cube.coord('latitude').points)]
-    else:
-        ext = None
-    return ext
+        o.update(**rg)
+    if 'longitude' in o and 'latitude' in o:
+        return flt_l([o['longitude'], o['latitude']])
 
 
-def pcolormesh_cube(
+def hatch_cube(cube, **kwArgs):
+    kwArgs.setdefault('zorder', 5)
+    kwArgs.setdefault('colors', 'none')
+    return _ll_cube(cube, func='contourf', **kwArgs)
+
+
+def _ll_cube(
         cube,
         axes=None,
+        func='pcolormesh',
         **kwArgs,
         ):
-    if axes is None:
-        axes = plt.gca()
-    lo0, la0 = cube.coord('longitude'), cube.coord('latitude')
-    if lo0.ndim == 1:
-        pch = iplt.pcolormesh(cube, axes=axes, **kwArgs)
+    axes = plt.gca() if axes is None else axes
+    support = ['pcolor', 'pcolormesh', 'contour', 'contourf']
+    assert func in support, f"func {func!r} not supported!"
+    if func in support[-2:]:
+        _func = getattr(iplt, func)
+        o = _func(cube, axes=axes, **kwArgs)
     else:
-        if hasattr(lo0, 'has_bounds') and lo0.has_bounds():
-            x, y = lo0.contiguous_bounds(), la0.contiguous_bounds()
+        lo0, la0 = cube.coord('longitude'), cube.coord('latitude')
+        if lo0.ndim == 1:
+            _func = getattr(iplt, func)
+            o = _func(cube, axes=axes, **kwArgs)
         else:
-            x, y = _2d_bounds(lo0.points, la0.points)
-        pch = axes.pcolormesh(x, y, cube.data,
-                              transform=ccrs.PlateCarree(),
-                              **kwArgs)
-    return pch
-
-
-def hatch_cube(
-        cube,
-        axes=None,
-        **kwArgs,
-        ):
-    pD = dict(zorder=9, colors='none')
-    pD.update(kwArgs)
-    if axes is None:
-        axes = plt.gca()
-    lo0, la0 = cube.coord('longitude'), cube.coord('latitude')
-    #cube_ = cube.copy(np.ma.masked_greater(cube.data, p))
-    if lo0.ndim == 1:
-        pch = iplt.contourf(cube, axes=axes, **pD)
-    else:
-        if hasattr(lo0, 'has_bounds') and lo0.has_bounds():
-            x, y = lo0.contiguous_bounds(), la0.contiguous_bounds()
-        else:
-            x, y = _2d_bounds(lo0.points, la0.points)
-        pch = axes.contourf(x, y, cube.data,
-                            transform=ccrs.PlateCarree(),
-                            **pD)
-    return pch
+            if hasattr(lo0, 'has_bounds') and lo0.has_bounds():
+                x, y = lo0.contiguous_bounds(), la0.contiguous_bounds()
+            else:
+                x, y = _2d_bounds(lo0.points, la0.points)
+            _func = getattr(axes, func)
+            o = _func(x, y, cube.data,
+                      transform=ccrs.PlateCarree(),
+                      **kwArgs)
+    return o
 
 
 def _2d_bounds(x, y):

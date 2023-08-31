@@ -1254,8 +1254,8 @@ def latex_unit_(unit):
     """
     import re
     def r__(m):
-        return '$^{' + m.group(0) + '}$'
-    return re.sub(r'(?<=[a-zA-Z])-?\d+', r__, unit)
+        return '$^{' + re.findall(r'-?\d+', m.group(0))[0] + '}$'
+    return re.sub(r'(?<=[a-zA-Z])((\*\*)?-?\d+)', r__, unit)
 
 
 def p_least_(pl, y0, y1):
@@ -1907,7 +1907,6 @@ def sub_shp_(shp, n, dims=None, _r=True, amp=1.5, N=None):
         >>> sub_shp_((12, 18), 6, _r=False)
         Out: [(0, 2)]
     """
-    from math import gcd
     N = n if N is None else N
     if dims is None:
         dims = tuple(range(len(shp)))
@@ -1927,7 +1926,7 @@ def sub_shp_(shp, n, dims=None, _r=True, amp=1.5, N=None):
         o = []
         _n = n
         for i, ii in zip(_d, _s):
-            nn = gcd(ii, _n)
+            nn = np.gcd(ii, _n)
             if nn > 1:
                 o.append((i, nn))
                 _n = _n//nn

@@ -5,11 +5,13 @@
 * alng_axis_            : apply along axis
 * area_weights_         : modified area_weights from iris
 * ax_fn_mp_             : apply along axis mp
-* axT_cube              : time axis of cube
+* axT_cube              : dimension of time axis of cube
 * concat_cube_          : robust cube concatenator
 * corr_cube_            : modified version of iris.analysis.stats.pearsonr
 * cubesv_               : save cube to nc with dim_t unlimitted
 * cut_as_cube           : cut into the domain of another cube
+* dim_axis_cube         : dimension of a specified axis of cube
+* dimc_axis_cube        : dimcoord of a specified axis of cube
 * doy_f_cube            : f for each doy
 * en_iqr_               : ensemble interquartile range
 * en_max_               : ensemble max
@@ -92,6 +94,7 @@ from iris.cube import Cube as _Cube
 from iris.cube import CubeList as _CubeList
 import iris.coord_categorisation as _ica
 from iris.coords import AuxCoord as _iAuxC
+from iris.coords import DimCoord as _iDimC
 from iris.util import equalise_attributes
 
 import numpy as np
@@ -111,6 +114,8 @@ __all__ = ['alng_axis_',
            'corr_cube_',
            'cubesv_',
            'cut_as_cube',
+           'dim_axis_cube',
+           'dimc_axis_cube',
            'doy_f_cube',
            'en_iqr_',
            'en_max_',
@@ -182,7 +187,7 @@ __all__ = ['alng_axis_',
 
 def slice_back_(cnd, c1d, ii, axis):
     """
-    ... put 1D slice back to its parent CUBE/ARRAY ...
+    ... put slice back to its parent CUBE/ARRAY ...
 
     Parsed arguments:
          cnd: parent CUBE/ARRAY that has multiple dimensions
@@ -197,16 +202,16 @@ def slice_back_(cnd, c1d, ii, axis):
         c1d = c1d.data
     if not isinstance(c1d, np.ndarray):
         c1d = np.asarray(c1d)
-    if ((isinstance(cnd, _Cube) or np.ma.isMaskedArray(cnd))
-        and not np.ma.isMaskedArray(c1d)):
+    if ((isinstance(cnd, _Cube) or np.ma.isMaskedArray(cnd)) and
+        not np.ma.isMaskedArray(c1d)):
         c1d = np.ma.masked_array(c1d, np.isnan(c1d))
-    emsg = "slice NOT matched its parent along axis({})."
+    emsg = "slice NOT matched its parent along axis({!r})."
     if axis is None:
         if c1d.size != 1:
             raise Exception(emsg.format(axis))
     else:
         axis = rpt_(axis, cnd.ndim)
-        axis = sorted(axis) if isIter_(axis, xi=(int, np.integer)) else axis
+        axis = sorted(axis) if isIter_(axis, xi=int) else axis
         if not np.all(np.asarray(cnd.shape)[axis] == np.asarray(c1d.shape)):
             raise Exception(emsg.format(axis))
     ind = ind_shape_i_(cnd.shape, ii, axis)
@@ -244,8 +249,7 @@ def extract_byAxes_(cnd, axis, sl_i, *vArg):
         sl = [sl_i]
 
     if isinstance(cnd, _Cube):
-        ax = [cnd.coord_dims(i)[0]
-              if isinstance(i, (str, iris.coords.DimCoord)) else i
+        ax = [cnd.coord_dims(i)[0] if isinstance(i, (str, _iDimC)) else i
               for i in ax]
 
     nArg = [(i, j) for i, j in zip(ax, sl)]
@@ -261,7 +265,7 @@ def extract_byAxes_(cnd, axis, sl_i, *vArg):
 
 def isMyIter_(x):
     """
-    ... Iterable with items as cube/ndarray ...
+    ... Iterable with items as CUBE/ARRAY ...
     """
     return isIter_(x,
                    xi=(np.ndarray, _Cube),
@@ -269,315 +273,340 @@ def isMyIter_(x):
 
 
 def pst_(
-        cube,
+        c,
         name=None,
         units=None,
         var_name=None,
         attrU=None,
         ):
     """
-    ... post-rename/reunits cube(L) ...
+    ... post-rename/reunits c(L) ...
     """
-    if isinstance(cube, _Cube):
+    if isinstance(c, _Cube):
         if name:
-            cube.rename(name)
+            c.rename(name)
         if units:
-            cube.units = units
+            c.units = units
         if var_name:
-            cube.var_name = var_name
+            c.var_name = var_name
         if attrU:
-            cube.attributes.update(attrU)
-    elif isMyIter_(cube):
-        for i in cube:
+            c.attributes.update(attrU)
+    elif isMyIter_(c):
+        for i in c:
             pst_(i, name=name, units=units, var_name=var_name, attrU=attrU)
 
 
-def axT_cube(cube):
+def axT_cube(c):
     """
-    ... dimesion of time axis in CUBE ...
+    ... dimension of time axis in CUBE ...
+    """
+    return dim_axis_cube(c, 'T')
+
+
+def dim_axis_cube(c, axis):
+    """
+    ... dimension of axis in CUBE ...
     """
     try:
-        tc = cube.coord(axis='T', dim_coords=True)
-        return cube.coord_dims(tc)[0]
+        dim_coord = c.coord(axis=axis, dim_coords=True)
+        return c.coord_dims(dim_coord)[0]
     except:
         return None
 
 
-def nTslice_cube(cube, n):
+def dimc_axis_cube(c, axis):
+    """
+    ... dimension of axis in CUBE ...
+    """
+    try:
+        return c.coord(axis=axis, dim_coords=True)
+    except:
+        return None
+
+
+def nTslice_cube(c, n):
     """
     ... slices along a no-time axis ...
     
     Args:
-        cube: CUBE or iterable CUBEs
-           n: maximum size of a slice
+        c: CUBE or iterable CUBEs
+        n: maximum size of a slice
     """
-    nd = cube.ndim
-    ax_nT = [i for i in range(nd) if i not in cube.coord_dims('time')]
-    shp = tuple(cube.shape[i] for i in ax_nT)
+    nd = c.ndim
+    ax_nT = [i for i in range(nd) if i not in c.coord_dims('time')]
+    shp = tuple(c.shape[i] for i in ax_nT)
     if np.prod(shp) < n:
-        return [cube]
+        return [c]
     else:
         ss = sub_shp_(shp, n, dims=ax_nT)
-        oo = [cube]
-        for s in ss:
+        oo = [c]
+        for ax, step in ss:
             oo = nli_(
                     [
                         [
-                            extract_byAxes_(o, s[0], np.s_[i:(i + s[1])])
-                            for i in range(0, cube.shape[s[0]], s[1])
+                            extract_byAxes_(o, ax, np.s_[i:(i + step)])
+                            for i in range(0, c.shape[ax], step)
                             ]
                         for o in oo
                         ]
                     )
         return _CubeList(oo)
-    #    for i in reversed(ax_nT):
-    #        if shp[i] > n:
-    #            step = int(np.ceil(shp[i] / n))
-    #            return [extract_byAxes_(cube, i, np.s_[ii:(ii + step)])
-    #                    for ii in range(0, shp[i], step)]
 
 
 def unique_yrs_of_cube(
-        cube,
-        ccsn='year',
+        c,
+        coord='year',
         mmm=None,
         ):
     """
-    ... unique year points of cube(L) ...
+    ... unique year points of c(L) ...
     """
-    if isinstance(cube, _Cube):
-        c = cube.copy()
-        ccs = [i.name() for i in c.coords()]
-        if ccsn not in ccs:
-            if 'season' in ccsn:
+    if isinstance(c, _Cube):
+        _c = c.copy()
+        _coords = [i.name() for i in _c.coords()]
+        if coord not in _coords:
+            if 'season' in coord:
                 if mmm:
-                    seasonyr_cube(c, mmm, name=ccsn)
+                    seasonyr_cube(_c, mmm, name=coord)
                 else:
                     emsg = "'mmm' must not be None for adding coord {!r}!"
-                    raise ValueError(emsg.format(ccsn))
+                    raise ValueError(emsg.format(coord))
             else:
-                _ica.add_year(c, 'time', name=ccsn)
-        return np.unique(c.coord(ccsn).points)
-    elif isIter_(cube, xi=_Cube):
-        return [unique_yrs_of_cube(i) for i in cube]
+                _ica.add_year(_c, 'time', name=coord)
+        return np.unique(_c.coord(coord).points)
+    elif isIter_(c, xi=_Cube):
+        return [unique_yrs_of_cube(i) for i in c]
     else:
         raise TypeError("unknown type for the first argument!")
 
 
-def y0y1_of_cube(cube, ccsn='year', mmm=None):
-    if isinstance(cube, _Cube):
-        c = cube.copy()
-        ccs = [i.name() for i in c.coords()]
-        if ccsn not in ccs:
-            if 'season' in ccsn:
+def y0y1_of_cube(
+        c,
+        coord='year',
+        mmm=None
+        ):
+    if isinstance(c, _Cube):
+        _c = c.copy()
+        _coords = [i.name() for i in _c.coords()]
+        if coord not in _coords:
+            if 'season' in coord:
                 if mmm:
-                    seasonyr_cube(c, mmm, name=ccsn)
+                    seasonyr_cube(_c, mmm, name=coord)
                 else:
                     emsg = "'mmm' must not be None for adding coord {!r}!"
-                    raise ValueError(emsg.format(ccsn))
+                    raise ValueError(emsg.format(coord))
             else:
-                _ica.add_year(c, 'time', name=ccsn)
-        elif mmm and 'season' in ccsn:
-            c.remove_coord(ccsn)
-            seasonyr_cube(c, mmm, name=ccsn)
-        return list(c.coord(ccsn).points[[0, -1]])
-    elif isIter_(cube, xi=_Cube):
-        yy = np.array([y0y1_of_cube(i) for i in cube])
+                _ica.add_year(_c, 'time', name=coord)
+        elif mmm and 'season' in coord:
+            _c.remove_coord(coord)
+            seasonyr_cube(_c, mmm, name=coord)
+        return list(_c.coord(coord).points[[0, -1]])
+    elif isIter_(c, xi=_Cube):
+        yy = np.array([y0y1_of_cube(i) for i in c])
         return [np.max(yy[:, 0]), np.min(yy[:, 1])]
     else:
         raise TypeError("unknown type for the first argument!")
 
 
-def extract_period_cube(cube, y0, y1, yy=False, ccsn='year', mmm=None):
+def extract_period_cube(
+        c,
+        y0,
+        y1,
+        yy=False,
+        coord='year',
+        mmm=None,
+        ):
     """
-    ... extract cube within the period from year y0 to year y1 ...
+    ... extract CUBE within the period from year y0 to year y1 ...
 
     Args:
-        cube: CUBE with coord('time')
-          y0: starting year
-          y1: end year
+            c: CUBE with coord('time')
+           y0: starting year
+           y1: end year
     kwArgs:
-          yy: True forcing output strictly starting/end at y0/y1
-        ccsn: name of coord with year points for extraction
-         mmm: defined season using 1st letters of composing months, should not
-              be None when seasonyr_cube is called
+           yy: True forcing output strictly starting/end at y0/y1
+        coord: name of coord with year points for extraction
+          mmm: defined season using 1st letters of composing months, should not
+               be None when seasonyr_cube is called
 
     useful info:
         >>> help(seasonyr_cube)
     """
-    c = cube.copy()
-    ccs = [i.name() for i in c.coords()]
-    if ccsn not in ccs:
-        if 'season' in ccsn:
+    _c = c.copy()
+    _coords = [i.name() for i in _c.coords()]
+    if coord not in _coords:
+        if 'season' in coord:
             if mmm:
-                seasonyr_cube(c, mmm, name=ccsn)
+                seasonyr_cube(_c, mmm, name=coord)
             else:
                 emsg = "'mmm' must not be None for adding coord {!r}!"
-                raise ValueError(emsg.format(ccsn))
+                raise ValueError(emsg.format(coord))
         else:
-            _ica.add_year(c, 'time', name=ccsn)
-    elif mmm and 'season' in ccsn:
-        c.remove_coord(ccsn)
-        seasonyr_cube(c, mmm, name=ccsn)
-    cstrD = {ccsn: lambda x: y0 <= x <= y1}
+            _ica.add_year(_c, 'time', name=coord)
+    elif mmm and 'season' in coord:
+        _c.remove_coord(coord)
+        seasonyr_cube(_c, mmm, name=coord)
+    cstrD = {coord: lambda x: y0 <= x <= y1}
     cstr = iris.Constraint(**cstrD)
-    o = c.extract(cstr)
-    if not (yy and (y0y1_of_cube(o) != [y0, y1] or
-               not np.all(np.diff(unique_yrs_of_cube(o)) == 1))):
+    o = _c.extract(cstr)
+    if not (
+            yy and (
+                y0y1_of_cube(o) != [y0, y1] or
+                not np.all(np.diff(unique_yrs_of_cube(o)) == 1)
+                )
+            ):
         return o
 
 
-def extract_win_cube(cube, d, r=15):
+def extract_win_cube(c, d, r=15):
     """
-    ... extract cube within a window centered at doy==d ...
+    ... extract CUBE within a window centered at doy==d ...
 
     Args:
-        cube: CUBE containing coord('time')
-           d: center of the window
+        c: CUBE containing coord('time')
+        d: center of the window
     kwArgs:
-           r: half window width (defaul 15)
+        r: half window width (defaul 15)
     """
-    c = cube.copy()
+    _c = c.copy()
     try:
-        _ica.add_day_of_year(c, 'time', name='doy')
+        _ica.add_day_of_year(_c, 'time', name='doy')
     except ValueError:
         pass
     x1, x2 = rpt_(d - r, 365), rpt_(d + r, 365)
     cstr = iris.Constraint(
             doy=lambda x: x1 <= x <= x2 if x1 < x2 else not (x2 < x < x1)
             )
-    o = c.extract(cstr)
+    o = _c.extract(cstr)
     return o
 
 
-def extract_season_cube(cube, mmm, valid_season=True):
+def extract_season_cube(c, mmm, valid_season=True):
     """
-    ... extract a cube of season named with continuous-months' 1st letters ...
+    ... extract a CUBE of season named with continuous-months' 1st letters ...
 
     Args:
-                cube: CUBE/CubeList containing coord('time')
+                   c: CUBE/CubeList containing coord('time')
                  mmm: continuous-months' 1st letters (for example, 'djf')
     kwArgs:
         valid_season: if True and season mmm is crossing years, the 1st & end
                       year will be excluded 
     """
-    if isinstance(cube, _Cube):
-        if 'season' in (i.name() for i in cube.coords()):
-            o = cube.extract(iris.Constraint(season=mmm))
+    if isinstance(c, _Cube):
+        if 'season' in (i.name() for i in c.coords()):
+            o = c.extract(iris.Constraint(season=mmm))
         else:
-            c = cube.copy() # to avoid changing metadata of original cube
+            _c = c.copy() # to avoid changing metadata of original CUBE
             try:
-                _ica.add_season_membership(c, 'time', mmm, name=mmm)
+                _ica.add_season_membership(_c, 'time', mmm, name=mmm)
             except ValueError:
-                c.remove_coord(mmm)
-                _ica.add_season_membership(c, 'time', mmm, name=mmm)
-            c.coord(mmm).points = c.coord(mmm).points.astype(np.int32)
-            o = c.extract(iris.Constraint(**{mmm: True}))
+                _c.remove_coord(mmm)
+                _ica.add_season_membership(_c, 'time', mmm, name=mmm)
+            _c.coord(mmm).points = _c.coord(mmm).points.astype(np.int32)
+            o = _c.extract(iris.Constraint(**{mmm: True}))
         if valid_season and not ismono_(mmmN_(mmm)):
             y0, y1 = y0y1_of_cube(o, ccsn='seasonyr', mmm=mmm)
             o = extract_period_cube(
                     o, y0 + 1, y1 - 1,
-                    ccsn='seasonyr', mmm=mmm
+                    ccsn='seasonyr',
+                    mmm=mmm,
                     )
         return o
-    elif isMyIter_(cube):
-        cl = [extract_season_cube(i, mmm) for i in cubeL]
+    elif isMyIter_(c):
+        cl = [extract_season_cube(i, mmm, valid_season=valid_season)
+              for i in c]
         return _CubeList(cl)
     else:
         raise TypeError("unknown type for the first argument!")
 
 
-def extract_month_cube(cube, Mmm):
+def extract_month_cube(c, Mmm):
     """
-    ... extraction cube of month Mmm ...
+    ... extract CUBE of month Mmm ...
     """
-    c = cube.copy()
+    _c = c.copy()
     try:
-        _ica.add_month(c, 'time', name='month')
+        _ica.add_month(_c, 'time', name='month')
     except ValueError:
         pass
-    o = c.extract(iris.Constraint(month=Mmm[:3].capitalize()))
-    return o
+    return _c.extract(iris.Constraint(month=Mmm[:3].capitalize()))
 
 
-def f_allD_cube(cube, rg=None, f='MAX', **fK_):
+def f_allD_cube(c, rg=None, func='MAX', **fK_):
     """
-    ... iris analysis f(unc) over all dims of cube(L) (each) ...
+    ... iris analysis func(unc) over all dims of c(L) (each) ...
     """
     #warnings.filterwarnings("ignore", category=UserWarning)
-    if isinstance(cube, _Cube):
+    if isinstance(c, _Cube):
         if rg:
-            cube = intersection_(cube, **rg)
-        _f = eval('iris.analysis.{}'.format(f.upper()))
-        c = cube.collapsed(cube.dim_coords, _f, **fK_)
-        return c.data
-    elif isMyIter_(cube):
-        return np.asarray(
-                [f_allD_cube(i, rg=rg, f=f, **fK_) for i in cube]
-                )
+            c = intersection_(c, **rg)
+        _f = getattr(iris.analysis, func.upper())
+        return c.collapsed(c.dim_coords, _f, **fK_).data
+    elif isMyIter_(c):
+        return np.asarray([f_allD_cube(i, rg=rg, func=func, **fK_) for i in c])
     else:
         return np.nan
 
 
-def min_cube(cube, rg=None):
-    return f_allD_cube(cube, rg=rg, f='MIN')
+def min_cube(c, rg=None):
+    return f_allD_cube(c, rg=rg, func='MIN')
 
 
-def max_cube(cube, rg=None):
-    return f_allD_cube(cube, rg=rg)
+def max_cube(c, rg=None):
+    return f_allD_cube(c, rg=rg)
 
 
-def minmax_cube(cube, rg=None):
-    return np.asarray([min_cube(cube, rg=rg), max_cube(cube, rg=rg)])
+def minmax_cube(c, rg=None):
+    return np.asarray([min_cube(c, rg=rg), max_cube(c, rg=rg)])
 
 
-def pp_cube(cube, rg=None, p=10):
+def pp_cube(c, rg=None, p=10):
     return np.asarray(
-        [f_allD_cube(cube, rg=rg, f='PERCENTILE', percent=p),
-         f_allD_cube(cube, rg=rg, f='PERCENTILE', percent=100 - p)]
+        [f_allD_cube(c, rg=rg, func='PERCENTILE', percent=p),
+         f_allD_cube(c, rg=rg, func='PERCENTILE', percent=100 - p)]
         )
 
 
-def min_cube_(cube, rg=None):
-    return np.nanmin(min_cube(cube, rg=rg))
+def min_cube_(c, rg=None):
+    return np.nanmin(min_cube(c, rg=rg))
 
 
-def max_cube_(cube, rg=None):
-    return np.nanmax(max_cube(cube, rg=rg))
+def max_cube_(c, rg=None):
+    return np.nanmax(max_cube(c, rg=rg))
 
 
-def minmax_cube_(cube, rg=None, p=None):
+def minmax_cube_(c, rg=None, p=None):
     if p:
-        mms = pp_cube(cube, rg=rg, p=p)
+        mms = pp_cube(c, rg=rg, p=p)
     else:
-        mms = minmax_cube(cube, rg=rg)
+        mms = minmax_cube(c, rg=rg)
     return (np.nanmin(mms), np.nanmax(mms))
 
 
-def get_xyd_cube(cube, guess_lst2=True):
+def get_xyd_cube(c, guess_lst2=True):
     """
-    ... cube axes of xy dims  ...
+    ... CUBE axes of xy dims  ...
     ... see help(get_xy_dim_) ...
     """
-    xc, yc = get_xy_dim_(cube)
+    xc, yc = get_xy_dim_(c)
     if xc is None:
         if guess_lst2:
-            warnings.warn("missing 'x' or 'y' dimcoord in input cube; "
+            warnings.warn("missing 'x' or 'y' dimcoord in input CUBE; "
                           "guess last two as xyd.")
-            return tuple(rpt_([-2, -1], cube.ndim))
+            return tuple(rpt_([-2, -1], c.ndim))
         else:
-            raise Exception("missing 'x' or 'y' dimcoord in input cube!")
+            raise Exception("missing 'x' or 'y' dimcoord in input CUBE!")
     else:
-        xyd = list(cube.coord_dims(yc) + cube.coord_dims(xc))
+        xyd = list(c.coord_dims(yc) + c.coord_dims(xc))
         xyd.sort()
         return tuple(xyd)
 
 
-def _get_xy_lim(cube, longitude=None, latitude=None):
-    xc, yc = get_xy_dim_(cube)
+def _get_xy_lim(c, longitude=None, latitude=None):
+    xc, yc = get_xy_dim_(c)
     if xc is None or yc is None:
-        raise Exception("missing 'x' or 'y' dimcoord in input cube!")
-    lo, la = cube.coord('longitude'), cube.coord('latitude')
+        raise Exception("missing 'x' or 'y' dimcoord in input CUBE!")
+    lo, la = c.coord('longitude'), c.coord('latitude')
     if longitude is None:
         longitude = [lo.points.min(), lo.points.max()]
     if latitude is None:
@@ -585,10 +614,12 @@ def _get_xy_lim(cube, longitude=None, latitude=None):
     if xc == lo and yc == la:
         xyl = {xc.name(): longitude, yc.name(): latitude}
     else:
-        xd = cube.coord_dims(lo).index(np.intersect1d(cube.coord_dims(lo),
-                                                      cube.coord_dims(xc)))
-        yd = cube.coord_dims(lo).index(np.intersect1d(cube.coord_dims(lo),
-                                                      cube.coord_dims(yc)))
+        xd = c.coord_dims(lo).index(
+                np.intersect1d(c.coord_dims(lo), c.coord_dims(xc))
+                )
+        yd = c.coord_dims(lo).index(
+                np.intersect1d(c.coord_dims(lo), c.coord_dims(yc))
+                )
         a_ = ind_inRange_(lo.points, *longitude, r_=360)
         b_ = ind_inRange_(la.points, *latitude)
         c_ = np.logical_and(a_, b_)
@@ -610,9 +641,9 @@ def _get_xy_lim(cube, longitude=None, latitude=None):
                 yc.name(), ind_inRange_(yc.points, *yll))
 
 
-def _get_ind_lolalim(cube, longitude=None, latitude=None):
-    xyd = get_xyd_cube(cube)
-    lo, la = get_loa_pts_2d_(cube)
+def _get_ind_lolalim(c, longitude=None, latitude=None):
+    xyd = get_xyd_cube(c)
+    lo, la = get_loa_pts_2d_(c)
     if longitude is None:
         longitude = [lo.min(), lo.max()]
     if latitude is None:
@@ -620,10 +651,10 @@ def _get_ind_lolalim(cube, longitude=None, latitude=None):
     a_ = ind_inRange_(lo, *longitude, r_=360)
     b_ = ind_inRange_(la, *latitude)
     c_ = np.logical_and(a_, b_)
-    return robust_bc2_(c_, cube.shape, xyd)
+    return robust_bc2_(c_, c.shape, xyd)
 
 
-def intersection_(cube, longitude=None, latitude=None):
+def intersection_(c, longitude=None, latitude=None):
     """
     ... intersection by range of longitude/latitude ...
     """
@@ -632,84 +663,84 @@ def intersection_(cube, longitude=None, latitude=None):
         kwArgs.update(dict(longitude=longitude))
     if latitude is not None:
         kwArgs.update(dict(latitude=latitude))
-    if cube.coord('latitude').ndim == 1:
-        return cube.intersection(**kwArgs)
+    if c.coord('latitude').ndim == 1:
+        return c.intersection(**kwArgs)
     else:
-        xyl = _get_xy_lim(cube, **kwArgs)
+        xyl = _get_xy_lim(c, **kwArgs)
         if isinstance(xyl, dict):
-            return cube.intersection(**xyl)
+            return c.intersection(**xyl)
         else:
-            return extract_byAxes_(cube, *xyl)
+            return extract_byAxes_(c, *xyl)
 
 
-def seasonyr_cube(cube, mmm, name='seasonyr'):
+def seasonyr_cube(c, mmm, name='seasonyr'):
     """
-    ... add season_year auxcoords to a cube especially regarding
-        specified season ...
+    ... add season_year auxcoords to CUBE especially regarding ...
+    ... specified season                                       ...
     """
-    if isinstance(cube, _Cube):
+    if isinstance(c, _Cube):
         if isinstance(mmm, str):
             seasons = (mmm, rest_mns_(mmm))
         elif (isinstance(mmm, (list, tuple)) and
               sorted(''.join(mmm)) == sorted('djfmamjjason')):
             seasons = mmm
         else:
-            raise Exception("unknown seasons {!r}!".format(mmm))
+            raise Exception(f"unknown seasons {mmm!r}!")
         try:
-            _ica.add_season_year(cube, 'time', name=name, seasons=seasons)
+            _ica.add_season_year(c, 'time', name=name, seasons=seasons)
         except ValueError:
-            cube.remove_coord(name)
-            _ica.add_season_year(cube, 'time', name=name, seasons=seasons)
-    elif isIter_(cube, xi=(_Cube, _CubeList, tuple, list)):
-        for c in cube:
-            seasonyr_cube(c, mmm, name=name)
+            c.remove_coord(name)
+            _ica.add_season_year(c, 'time', name=name, seasons=seasons)
+    elif isIter_(c, xi=(_Cube, _CubeList, tuple, list)):
+        for i in c:
+            seasonyr_cube(i, mmm, name=name)
 
 
-def yr_doy_cube(cube):
+def yr_doy_cube(c):
     """
-    ... add year, day-of-year auxcoords to a cube ...
+    ... add year, day-of-year AuxCoords to CUBE ...
     """
-    if isinstance(cube, _Cube):
+    if isinstance(c, _Cube):
         try:
-            _ica.add_year(cube, 'time', name='year')
-        except ValueError:
-            pass
-        else:
-            cube.coord('year').attributes = {}
-        try:
-            _ica.add_day_of_year(cube, 'time', name='doy')
+            _ica.add_year(c, 'time', name='year')
         except ValueError:
             pass
         else:
-            cube.coord('doy').attributes = {}
-    elif isIter_(cube, xi=(_Cube, _CubeList, tuple, list)):
-        for c in cube:
-            yr_doy_cube(c)
+            c.coord('year').attributes = {}
+        try:
+            _ica.add_day_of_year(c, 'time', name='doy')
+        except ValueError:
+            pass
+        else:
+            c.coord('doy').attributes = {}
+    elif isIter_(c, xi=(_Cube, _CubeList, tuple, list)):
+        for i in c:
+            yr_doy_cube(i)
 
 
-def rm_yr_doy_cube(cube):
+def rm_yr_doy_cube(c):
     """
-    ... remove year, day-of-year auxcoords from a cube ...
+    ... remove year, day-of-year auxcoords from CUBE ...
     """
     try:
-        cube.remove_coord('year')
+        c.remove_coord('year')
     except iris.exceptions.CoordinateNotFoundError:
         pass
     try:
-        cube.remove_coord('doy')
+        c.remove_coord('doy')
     except iris.exceptions.CoordinateNotFoundError:
         pass
 
 
-def rm_t_aux_cube(cube, keep=None):
+def rm_t_aux_cube(c, keep=None):
     """
-    ... remove time-related auxcoords from a cube or a list of cubes ...
+    ... remove time-related auxcoords from CUBE or a list of cubes ...
     """
     tauxL = ['year', 'month', 'season', 'day', 'doy', 'hour', 'yr']
     def _isTCoord(x):
         return any((i in x.name() for i in tauxL)) or isSeason_(x.name())
-    if isinstance(cube, _Cube):
-        for i in cube.aux_coords:
+    if isinstance(c, _Cube):
+        for i in c.aux_coords:
             if keep is None:
                 isTaux = _isTCoord(i)
             elif isIter_(keep):
@@ -717,44 +748,44 @@ def rm_t_aux_cube(cube, keep=None):
             else:
                 isTaux = _isTCoord(i) and i.name() != keep
             if isTaux:
-                cube.remove_coord(i)
-    elif isMyIter_(cube):
-        for c in cube:
-            rm_t_aux_cube(c)
+                c.remove_coord(i)
+    elif isMyIter_(c):
+        for i in c:
+            rm_t_aux_cube(i)
     else:
         raise TypeError('Input should be CUBE or iterable CUBEs!')
 
 
-def rm_sc_cube(cube):
-    if isinstance(cube, _Cube):
-        for i in cube.coords():
-            if len(cube.coord_dims(i)) == 0:
-                cube.remove_coord(i)
-    elif isMyIter_(cube):
-        for c in cube:
-            rm_sc_cube(c)
+def rm_sc_cube(c):
+    if isinstance(c, _Cube):
+        for i in c.coords():
+            if len(c.coord_dims(i)) == 0:
+                c.remove_coord(i)
+    elif isMyIter_(c):
+        for i in c:
+            rm_sc_cube(i)
     else:
         raise TypeError('Input should be CUBE or Iterable CUBEs!')
 
 
-def guessBnds_cube(cube):
+def guessBnds_cube(c):
     """
-    ... guess bounds of dims of cube if not exist ...
+    ... guess bounds of dims of CUBE if not exist ...
     """
-    for i in cube.dim_coords:
+    for i in c.dim_coords:
         try:
             i.guess_bounds()
         except ValueError:
             pass
 
 
-def get_loa_dim_(cube):
+def get_loa_dim_(c):
     """
     ... get lon and lat coords (dimcoords only) ...
     """
-    lat_coords = [coord for coord in cube.dim_coords
+    lat_coords = [coord for coord in c.dim_coords
                   if "latitude" in coord.name()]
-    lon_coords = [coord for coord in cube.dim_coords
+    lon_coords = [coord for coord in c.dim_coords
                   if "longitude" in coord.name()]
     if len(lat_coords) > 1 or len(lon_coords) > 1:
         raise ValueError(
@@ -765,28 +796,28 @@ def get_loa_dim_(cube):
     return (lon_coord, lat_coord)
 
 
-def get_xy_dim_(cube, guess_lst2=True):
+def get_xy_dim_(c, guess_lst2=True):
     """
-    ... horizontal spatial dim coords                    ...
-    ... return last 2 dimcoords if failed in 'XY' method ...
+    ... horizontal spatial DimCoords                     ...
+    ... return last 2 DimCoords if failed in 'XY' method ...
     """
     try:
-        return (cube.coord(axis='X', dim_coords=True),
-                cube.coord(axis='Y', dim_coords=True))
+        return (c.coord(axis='X', dim_coords=True),
+                c.coord(axis='Y', dim_coords=True))
     except:
-        if guess_lst2 and cube.ndim > 1:
-            return(cube.coord(dimensions=rpt_(-1, cube.ndim), dim_coords=True),
-                   cube.coord(dimensions=rpt_(-2, cube.ndim), dim_coords=True))
+        if guess_lst2 and c.ndim > 1:
+            return(c.coord(dimensions=rpt_(-1, c.ndim), dim_coords=True),
+                   c.coord(dimensions=rpt_(-2, c.ndim), dim_coords=True))
         else:
             return (None, None)
 
 
-def get_loa_(cube):
+def get_loa_(c):
     """
-    ... longitude/latitude coords of cube ...
+    ... longitude/latitude coords of CUBE ...
     """
     try:
-        lo, la = cube.coord('longitude'), cube.coord('latitude')
+        lo, la = c.coord('longitude'), c.coord('latitude')
         lo.convert_units('degrees')
         la.convert_units('degrees')
         return (lo, la)
@@ -794,7 +825,7 @@ def get_loa_(cube):
         return (None, None)
 
 
-def area_weights_(cube, normalize=False):
+def area_weights_(c, normalize=False):
     """
     ... revised iris.analysis.cartography.area_weights to ignore lon/lat in
         auxcoords ...
@@ -805,7 +836,7 @@ def area_weights_(cube, normalize=False):
             _quadrant_area
             )
     # Get the radius of the earth
-    cs = cube.coord_system("CoordSystem")
+    cs = c.coord_system("CoordSystem")
     if isinstance(cs, iris.coord_systems.GeogCS):
         if cs.inverse_flattening != 0.0:
             warnings.warn("Assuming spherical earth from ellipsoid.")
@@ -821,20 +852,20 @@ def area_weights_(cube, normalize=False):
 
     # Get the lon and lat coords and axes
     try:
-        lon, lat = get_loa_dim_(cube)
+        lon, lat = get_loa_dim_(c)
     except IndexError:
-        raise ValueError('Cannot get latitude/longitude '
-                         'coordinates from cube {!r}.'.format(cube.name()))
+        emsg = "Cannot get latitude/longitude coordinates from CUBE {!r}!"
+        raise ValueError(emsg.format(c.name()))
 
     if lat.ndim > 1:
         raise iris.exceptions.CoordinateMultiDimError(lat)
     if lon.ndim > 1:
         raise iris.exceptions.CoordinateMultiDimError(lon)
 
-    lat_dim = cube.coord_dims(lat)
+    lat_dim = c.coord_dims(lat)
     lat_dim = lat_dim[0] if lat_dim else None
 
-    lon_dim = cube.coord_dims(lon)
+    lon_dim = c.coord_dims(lon)
     lon_dim = lon_dim[0] if lon_dim else None
 
     if not (lat.has_bounds() and lon.has_bounds()):
@@ -874,25 +905,25 @@ def area_weights_(cube, normalize=False):
             wshape.append(ll_weights.shape[idim])
     ll_weights = ll_weights.reshape(wshape)
     broad_weights = iris.util.broadcast_to_shape(
-            ll_weights, cube.shape, broadcast_dims
+            ll_weights, c.shape, broadcast_dims
             )
 
     return broad_weights
 
 
-def cut_as_cube(cube0, cube1):
+def cut_as_cube(c0, c1):
     """
-    ... cut cube1 with the domain of cube0 ...
+    ... cut CUBE1 with the domain of CUBE0 ...
     """
-    xc1, yc1 = get_xy_dim_(cube1)
-    xc0, yc0 = get_xy_dim_(cube0)
+    xc1, yc1 = get_xy_dim_(c1)
+    xc0, yc0 = get_xy_dim_(c0)
     xn, yn = xc1.name(), yc1.name()
     xe = np.min(np.abs(np.diff(xc1.points))) / 2
     ye = np.min(np.abs(np.diff(yc1.points))) / 2
     x0, x1 = np.min(xc0.points), np.max(xc0.points)
     y0, y1 = np.min(yc0.points), np.max(yc0.points)
     return extract_byAxes_(
-            cube1,
+            c1,
             xn,
             ind_inRange_(xc1.points, x0 - xe, x1 + xe, side=0),
             yn,
@@ -900,13 +931,13 @@ def cut_as_cube(cube0, cube1):
             )
 
 
-def maskLS_cube(cube, sftlf, LorS='S', thr=0):
+def maskLS_cube(c, sftlf, LorS='S', thr=0):
     """
     ... mask sea/land area ...
 
     Parsed arguments:
-         cube: DATA cube to be masked
-        sftlf: land area fraction; at least covering entire cube
+            c: DATA CUBE to be masked
+        sftlf: land area fraction; at least covering entire CUBE
          LorS: 'land' or 'sea' to be masked (default 'sea')
           thr: sftlf value <= thr as not land area (default 0)
     """
@@ -914,169 +945,169 @@ def maskLS_cube(cube, sftlf, LorS='S', thr=0):
     SList = ['S', 'O', 'W', 'SEA', 'OCEAN', 'WATER']
     if LorS.upper() not in (LList + SList):
         raise ValueError("Variable 'LorS' not interpretable!")
-    sftlf_ = cut_as_cube(cube, sftlf)
+    sftlf_ = cut_as_cube(c, sftlf)
     ma_0 = sftlf_.data <= thr
     if LorS.upper() in LList:
         ma_0 = ~ma_0
-    ma_ = np.broadcast_to(ma_0, cube.shape)
-    cube = iris.util.mask_cube(cube, ma_)
+    ma_ = np.broadcast_to(ma_0, c.shape)
+    c = iris.util.mask_cube(c, ma_)
 
 
-def getGridA_cube(cube, areacella=None):
+def getGridA_cube(c, areacella=None):
     """
-    ... get grid_area of cube ...
+    ... get grid_area of CUBE ...
     """
     if areacella:
         ga_ = iris.util.squeeze(areacella)
         if ga_.ndim != 2:
-            return getGridA_cube(cube)
-        ga = cut_as_cube(cube, ga_).data
+            return getGridA_cube(c)
+        ga = cut_as_cube(c, ga_).data
         try:
-            ga = robust_bc2_(ga, cube.shape, get_xyd_cube(cube))
+            ga = robust_bc2_(ga, c.shape, get_xyd_cube(c))
             return ga
         except:
-            return getGridA_cube(cube)
+            return getGridA_cube(c)
     else:
         try:
-            guessBnds_cube(cube)
-            ga = area_weights_(cube)
+            guessBnds_cube(c)
+            ga = area_weights_(c)
         except:
             ga = None
         return ga
 
 
-def getGridAL_cube(cube, sftlf=None, areacella=None):
+def getGridAL_cube(c, sftlf=None, areacella=None):
     """
-    ... return grid_land_area of cube if sftlf provided ...
-    ... else return grid_area of cube                   ...
+    ... return grid_land_area of CUBE if sftlf provided ...
+    ... else return grid_area of CUBE                   ...
     """
-    ga = getGridA_cube(cube, areacella)
+    ga = getGridA_cube(c, areacella)
     if sftlf is not None:
         sf_sqz = iris.util.squeeze(sftlf)
         if sf_sqz.ndim != 2:
-            raise Exception('NOT 2D area-cube!')
-        sf = cut_as_cube(cube, sf_sqz).data
-        sf = robust_bc2_(sf, cube.shape, get_xyd_cube(cube))
+            raise Exception('NOT 2D area-c!')
+        sf = cut_as_cube(c, sf_sqz).data
+        sf = robust_bc2_(sf, c.shape, get_xyd_cube(c))
         if ga is None:
-            return np.ones(cube.shape) * sf / 100
+            return np.ones(c.shape) * sf / 100
         else:
             return ga * sf / 100.
     else:
         return ga
 
 
-def rgF_cube(cube, function, rgD=None, **functionD):
+def rgF_cube(c, func, rg=None, **funcD):
     #warnings.filterwarnings("ignore", category=UserWarning)
-    if rgD:
-        ind = _get_ind_lolalim(cube, **rgD)
-        tmp = iris.util.mask_cube(cube.copy(), ~ind)
+    if rg:
+        ind = _get_ind_lolalim(c, **rg)
+        tmp = iris.util.mask_cube(c.copy(), ~ind)
     else:
-        tmp = cube
+        tmp = c
     xc, yc = get_xy_dim_(tmp)
-    return tmp.collapsed([xc, yc], function, **functionD)
+    return tmp.collapsed([xc, yc], func, **funcD)
 
 
-def rgF_poly_cube(cubeD, poly, function, **functionD):
+def rgF_poly_cube(c, poly, func, **funcD):
     #warnings.filterwarnings("ignore", category=UserWarning)
-    ind = inpolygons_cube(poly, cubeD, **kwArgs)
-    tmp = iris.util.mask_cube(cubeD.copy(), ~ind)
+    ind = inpolygons_cube(c, poly, **kwArgs)
+    tmp = iris.util.mask_cube(c.copy(), ~ind)
     xc, yc = get_xy_dim_(tmp)
-    return tmp.collapsed([xc, yc], function, **functionD)
+    return tmp.collapsed([xc, yc], func, **funcD)
 
 
-def rgCount_cube(cubeD, sftlf=None, areacella=None, rgD=None, function=None):
+def rgCount_cube(c, sftlf=None, areacella=None, rg=None, func=None):
     #warnings.filterwarnings("ignore", category=UserWarning)
-    if function is None:
-        function = lambda values: values > 0
-        warnings.warn("'function' not provided; count values greater than 0.")
-    xyd = get_xyd_cube(cubeD)
-    ga0 = getGridA_cube(cubeD, areacella)
-    ga0 = np.ones(cubeD.shape) if ga0 is None else ga0
-    ga = getGridAL_cube(cubeD, sftlf, areacella)
-    ga = np.ones(cubeD.shape) if ga is None else ga
-    if rgD:
-        ind = _get_ind_lolalim(cubeD, **rgD)
-        ga0 *= ind
-        ga *= ind
-    umsk = ~cubeD.data.mask if (np.ma.isMaskedArray(cubeD.data) and
-                                np.ma.is_masked(cubeD.data)) else 1
+    if func is None:
+        func = lambda values: values > 0
+        warnings.warn("'func' not provided; count values greater than 0.")
+    xyd = get_xyd_cube(c)
+    ga0 = getGridA_cube(c, areacella)
+    ga0 = np.ones(c.shape) if ga0 is None else ga0
+    ga = getGridAL_cube(c, sftlf, areacella)
+    ga = np.ones(c.shape) if ga is None else ga
+    if rg:
+        ind = _get_ind_lolalim(c, **rg)
+        ga0 = ga0 * ind
+        ga = ga * ind
+    umsk = ~c.data.mask if (np.ma.isMaskedArray(c.data) and 
+                            np.ma.is_masked(c.data)) else 1
     sum0 = np.sum(ga0 * umsk, axis=xyd)
     if np.any(sum0 == 0):
         raise Exception("empty slice encountered.")
-    data = np.sum(function(cubeD.data) * ga, axis=xyd) * 100 / sum0
-    xc, yc = get_xy_dim_(cubeD)
-    tmp = cubeD.collapsed([xc, yc], iris.analysis.MEAN)
+    data = np.sum(func(c.data) * ga, axis=xyd) * 100 / sum0
+    xc, yc = get_xy_dim_(c)
+    tmp = c.collapsed([xc, yc], iris.analysis.MEAN)
     return tmp.copy(data)
 
 
-def rgCount_poly_cube(cubeD, poly, sftlf=None, areacella=None, function=None,
+def rgCount_poly_cube(c, poly, sftlf=None, areacella=None, func=None,
                       **kwArgs):
     #warnings.filterwarnings("ignore", category=UserWarning)
-    if function is None:
-        function = lambda values: values > 0
-        warnings.warn("'function' not provided; count values greater than 0.")
-    xyd = get_xyd_cube(cubeD)
-    ga0 = getGridA_cube(cubeD, areacella)
-    ga0 = np.ones(cubeD.shape) if ga0 is None else ga0
-    ga = getGridAL_cube(cubeD, sftlf, areacella)
-    ga = np.ones(cubeD.shape) if ga is None else ga
-    ind = inpolygons_cube(poly, cubeD, **kwArgs)
-    ga0 *= ind
-    ga *= ind
+    if func is None:
+        func = lambda values: values > 0
+        warnings.warn("'func' not provided; count values greater than 0.")
+    xyd = get_xyd_cube(c)
+    ga0 = getGridA_cube(c, areacella)
+    ga0 = np.ones(c.shape) if ga0 is None else ga0
+    ga = getGridAL_cube(c, sftlf, areacella)
+    ga = np.ones(c.shape) if ga is None else ga
+    ind = inpolygons_cube(c, poly, **kwArgs)
+    ga0 = ga0 * ind
+    ga = ga * ind
     sum0 = np.sum(ga0, axis=xyd)
     if np.any(sum0 == 0):
         raise Exception("empty slice encountered.")
-    data = np.sum(function(cubeD.data) * ga, axis=xyd) * 100 / sum0
-    xc, yc = get_xy_dim_(cubeD)
-    tmp = cubeD.collapsed([xc, yc], iris.analysis.MEAN)
+    data = np.sum(func(c.data) * ga, axis=xyd) * 100 / sum0
+    xc, yc = get_xy_dim_(c)
+    tmp = c.collapsed([xc, yc], iris.analysis.MEAN)
     return tmp.copy(data)
 
 
-def rgMean_cube(cubeD, sftlf=None, areacella=None, rgD=None):
+def rgMean_cube(c, sftlf=None, areacella=None, rg=None):
     """
     ... regional mean; try weighted if available ...
     """
     #warnings.filterwarnings("ignore", category=UserWarning)
-    ga = getGridAL_cube(cubeD, sftlf, areacella)
-    if rgD:
-        ind = _get_ind_lolalim(cubeD, **rgD)
+    ga = getGridAL_cube(c, sftlf, areacella)
+    if rg:
+        ind = _get_ind_lolalim(c, **rg)
         if ga is None:
             ga = ind * np.ones(ind.shape)
         else:
-            ga *= ind
-    xc, yc = get_xy_dim_(cubeD)
+            ga = ga * ind
+    xc, yc = get_xy_dim_(c)
     if ga is None:
-        return cubeD.collapsed([xc, yc], iris.analysis.MEAN)
+        return c.collapsed([xc, yc], iris.analysis.MEAN)
     else:
-        return cubeD.collapsed([xc, yc], iris.analysis.MEAN, weights=ga)
+        return c.collapsed([xc, yc], iris.analysis.MEAN, weights=ga)
 
 
-def get_gwl_y0_(cube, gwl, pref=[1861, 1890]):
+def get_gwl_y0_(c, gwl, pref=[1861, 1890]):
     """
     ... first year of 30-year window of global warming level ...
 
     Args:
-        cube: CUBE of global surface temperature
-         gwl: warming level compared to reference period pref
+          c: CUBE of global surface temperature
+        gwl: warming level compared to reference period pref
     """
-    c = pSTAT_cube(cube if cube.ndim == 1 else rgMean_cube(cube), 'year')
-    tref = extract_period_cube(c, *pref)
+    _c = pSTAT_cube(c if c.ndim == 1 else rgMean_cube(c), 'year')
+    tref = extract_period_cube(_c, *pref)
     tref = tref.collapsed('time', iris.analysis.MEAN).data
 
     def _G_tR(G, tR):
         if not isIter_(G):
-            ind = np.where(rMEAN1d_(c.data, 30) >= G + tR)[0][0]
-            return c.coord('year').points[ind]
+            ind = np.where(rMEAN1d_(_c.data, 30) >= G + tR)[0][0]
+            return _c.coord('year').points[ind]
         else:
             return [_G_tR(i, tR) for i in G]
 
-    if c.ndim == 1:
+    if _c.ndim == 1:
         return _G_tR(gwl, tref)
     else:
         o = np.empty(tref.shape + np.array(gwl).shape)
-        ax = c.coord_dims('year')[0]
-        for i in range(nSlice_(c.shape, ax)):
-            ind = ind_shape_i_(c.shape, i, ax)
+        ax = _c.coord_dims('year')[0]
+        for i in range(nSlice_(_c.shape, ax)):
+            ind = ind_shape_i_(_c.shape, i, ax)
             ind_ = ind_shape_i_(tref.shape, i, axis=None)
             ind__ = ind_shape_i_(o.shape, i,
                                  axis=-1 if np.array(gwl).shape else None)
@@ -1095,23 +1126,22 @@ def _inpolygons(poly, points, **kwArgs):
     return ind
 
 
-def _isyx(cube):
-    xc, yc = get_xy_dim_(cube)
+def _isyx(c):
+    xc, yc = get_xy_dim_(c)
     if xc is None:
-        raise Exception("cube missing 'x' or 'y' coord")
-    xcD, ycD = cube.coord_dims(xc)[0], cube.coord_dims(yc)[0]
+        raise Exception("input CUBE missing 'x' or 'y' coord")
+    xcD, ycD = c.coord_dims(xc)[0], c.coord_dims(yc)[0]
     return ycD < xcD
 
 
-def get_loa_pts_2d_(cube):
+def get_loa_pts_2d_(c):
     """
     ... 2d longitude/latitude points (from coord or meshed) ...
     """
-    lo_, la_ = get_loa_(cube)
+    lo_, la_ = get_loa_(c)
     if lo_ is None or la_ is None:
-        raise Exception("input cube(s) must have "
-                        "longitude/latidute coords!")
-    yx_ = _isyx(cube)
+        raise Exception("input CUBE must have longitude/latidute coords!")
+    yx_ = _isyx(c)
     if lo_.ndim != 2:
         if yx_:
             x, y = np.meshgrid(lo_.points, la_.points)
@@ -1125,65 +1155,63 @@ def get_loa_pts_2d_(cube):
     return (x, y)
 
 
-def inpolygons_cube(poly, cube, **kwArgs):
-    x, y = get_loa_pts_2d_(cube)
+def inpolygons_cube(c, poly, **kwArgs):
+    x, y = get_loa_pts_2d_(c)
     ind = _inpolygons(poly, np.vstack((x.ravel(), y.ravel())).T, **kwArgs)
-    ind = robust_bc2_(ind.reshape(x.shape), cube.shape, get_xyd_cube(cube))
+    ind = robust_bc2_(ind.reshape(x.shape), c.shape, get_xyd_cube(c))
     return ind
 
 
-def maskNaN_cube(cube):
-    ind = np.isnan(cube.data)
-    cube = iris.util.mask_cube(cube, ind)
+def maskNaN_cube(c):
+    ind = np.isnan(c.data)
+    iris.util.mask_cube(c, ind, in_place=True)
 
 
-def maskPOLY_cube(poly, cube, masked_out=True, **kwArgs):
-    ind = inpolygons_cube(poly, cubeD, **kwArgs)
+def maskPOLY_cube(c, poly, masked_out=True, **kwArgs):
+    ind = inpolygons_cube(c, poly, **kwArgs)
     ind = ~ind if masked_out else ind
-    cube = iris.util.mask_cube(cube, ind)
+    iris.util.mask_cube(c, ind, in_place=True)
 
 
-def rgMean_poly_cube(cubeD, poly, sftlf=None, areacella=None, **kwArgs):
+def rgMean_poly_cube(c, poly, sftlf=None, areacella=None, **kwArgs):
     #warnings.filterwarnings("ignore", category=UserWarning)
-    ga = getGridAL_cube(cubeD, sftlf, areacella)
-    ind = inpolygons_cube(poly, cubeD, **kwArgs)
-    xc, yc = get_xy_dim_(cubeD)
+    ga = getGridAL_cube(c, sftlf, areacella)
+    ind = inpolygons_cube(c, poly, **kwArgs)
+    xc, yc = get_xy_dim_(c)
     if ga is None:
         ga = ind * np.ones(ind.shape)
     else:
         ga = ga * ind
-    return cubeD.collapsed([xc, yc],
-                           iris.analysis.MEAN,
-                           weights=ga)
+    return c.collapsed([xc, yc], iris.analysis.MEAN, weights=ga)
 
 
-def _rm_extra_coords_cubeL(cubeL):
-    l0 = [[ii.name() for ii in i.aux_coords] for i in cubeL]
+def _rm_extra_coords_cubeL(cL):
+    l0 = [[ii.name() for ii in i.aux_coords] for i in cL]
     l1 = ouniqL_(flt_l(l0))
-    l2 = [i for i in l1 if sum(np.array(flt_l(l0))==i) < len(cubeL)]
+    l2 = [i for i in l1 if sum(np.array(flt_l(l0))==i) < len(cL)]
     if len(l2) != 0:
-        for i, ii in zip(cubeL, l0):
+        for i, ii in zip(cL, l0):
             for iii in l2:
                 if iii in ii:
                     i.remove_coord(iii)
 
 
-def _get_xycoords(cube):
+def _get_xycoords(c):
     """
     ... get xy (spatial) coords ...
     """
-    xycn = ['lon', 'x_coord', 'x-coord', 'x coord',
-            'lat', 'y_coord', 'y-coord', 'y coord']
-    xycoords = [coord for coord in cube.coords()
-                if any([i in coord.name() for i in xycn])]
+    xycoord_names = ['lon', 'x_coord', 'x-coord', 'x coord',
+                     'lat', 'y_coord', 'y-coord', 'y coord']
+    xycoords = [coord for coord in c.coords()
+                if any([i in coord.name() for i in xycoord_names])]
     return xycoords
 
 
-def _unify_1coord_points(cubeL, coord_name, **close_kwArgs):
+def _unify_1coord_points(cL, coord_name, **close_kwArgs):
     epochs = {}
     emsg = "COORD {!r} can't be unified!".format(coord_name)
     emsg_ = "Bounds of COORD {!r} can't be unified!".format(coord_name)
-    for c in cubeL:
+    for c in cL:
         cc = c.coord(coord_name)
         d0 = epochs.setdefault('points', cc.points)
         if np.allclose(cc.points, d0, **close_kwArgs):
@@ -1198,18 +1226,18 @@ def _unify_1coord_points(cubeL, coord_name, **close_kwArgs):
                 raise Exception(emsg_)
 
 
-def _unify_xycoord_points(cubeL, **close_kwArgs):
+def _unify_xycoord_points(cL, **close_kwArgs):
     ll_('cccc: _unify_xycoord_points() called')
-    if len(cubeL) > 1:
-        coord_names = [i.name() for i in _get_xycoords(cubeL[0])]
+    if len(cL) > 1:
+        coord_names = [i.name() for i in _get_xycoords(cL[0])]
         for coord_name in coord_names:
-            _unify_1coord_points(cubeL, coord_name, **close_kwArgs)
+            _unify_1coord_points(cL, coord_name, **close_kwArgs)
 
 
-def _unify_1coord_attrs(cubeL, coord_name):
+def _unify_1coord_attrs(cL, coord_name):
     attrs = ['long_name', 'var_name', 'attributes', 'coord_system']
     epochs = {}
-    for c in cubeL:
+    for c in cL:
         cc = c.coord(coord_name)
         tp = cc.points.dtype
         tp_ = np.dtype(tp.str.replace('>', '<')) if '>' in tp.str else tp
@@ -1228,66 +1256,66 @@ def _unify_1coord_attrs(cubeL, coord_name):
             tmp = epochs.setdefault(i, cc.__getattribute__(i))
             cc.__setattr__(i, tmp)
     if 'bounds' in epochs:
-        for c in cubeL:
+        for c in cL:
             cc = c.coord(coord_name)
 
 
-def _unify_coord_attrs(cubeL, coord_names=None):
+def _unify_coord_attrs(cL, coord_names=None):
     ll_('cccc: _unify_coord_attrs() called')
-    if len(cubeL) > 1:
+    if len(cL) > 1:
         coord_names = coord_names if coord_names else\
-                      [i.name() for i in cubeL[0].coords()]
+                      [i.name() for i in cL[0].coords()]
         for coord_name in coord_names:
-            _unify_1coord_attrs(cubeL, coord_name)
+            _unify_1coord_attrs(cL, coord_name)
 
 
-def _unify_time_units(cubeL):
+def _unify_time_units(cL):
     CLD0 = 'proleptic_gregorian'
     CLD = 'gregorian'
-    clds = [c.coord('time').units.calendar for c in cubeL]
+    clds = [c.coord('time').units.calendar for c in cL]
     if len(ouniqL_(clds)) > 1:
-        for c in cubeL:
+        for c in cL:
             ctu = c.coord('time').units
             if ctu.calendar == CLD0:
                 c.coord('time').units = cf_units.Unit(ctu.origin, CLD)
-    iris.util.unify_time_units(cubeL)
+    iris.util.unify_time_units(cL)
 
 
-def _unify_dtype(cubeL, fst=False):
+def _unify_dtype(cL, first=False):
     ll_('cccc: _unify_dtype() called')
-    tps = [c.dtype for c in cubeL]
-    if fst:
+    tps = [c.dtype for c in cL]
+    if first:
         tp = tps[0]
     else:
         utps = np.unique(tps)
         tpi = [np.sum(np.asarray(tps) == i) for i in utps]
         tp = utps[np.argmax(tpi)]
-    for c in cubeL:
+    for c in cL:
         if c.dtype != tp:
             c.data = c.data.astype(tp)
 
 
-def _unify_cellmethods(cubeL, fst=True):
+def _unify_cellmethods(cL, first=True):
     ll_('cccc: _unify_cellmethods() called')
-    cms = [c.cell_methods for c in cubeL]
-    if fst:
+    cms = [c.cell_methods for c in cL]
+    if first:
         cm = cms[0]
     else:
         ucms = np.unique(cms)
         cmi = [np.sum(np.asarray(cms) == i) for i in ucms]
         cm = utps[np.argmax(cmi)]
-    for c in cubeL:
+    for c in cL:
         if c.cell_methods != cm:
             c.cell_methods = cm
 
 
-def purefy_cubeL_(cubeL):
+def purefy_cubeL_(cL):
     """
     ... helpful when merge or concatenate CubeList ...
     """
-    _rm_extra_coords_cubeL(cubeL)
-    equalise_attributes(cubeL)
-    _unify_time_units(cubeL)
+    _rm_extra_coords_cubeL(cL)
+    equalise_attributes(cL)
+    _unify_time_units(cL)
 
 
 def _collect_errCC(x):
@@ -1295,141 +1323,139 @@ def _collect_errCC(x):
     return tmp[0].split(', ') if tmp else tmp
 
 
-def concat_cube_(cubeL, **close_kwArgs):
+def concat_cube_(cL, **close_kwArgs):
     """
     ... robust cube concatenator ...
     """
-    purefy_cubeL_(cubeL)
+    purefy_cubeL_(cL)
     try:
-        o = cubeL.concatenate_cube()
+        o = cL.concatenate_cube()
     except iris.exceptions.ConcatenateError as ce_:
         if any(['Data types' in i for i in ce_.args[0]]):
-            _unify_dtype(cubeL)
+            _unify_dtype(cL)
         if any(['Cube metadata' in i for i in ce_.args[0]]):
-            _unify_cellmethods(cubeL)
+            _unify_cellmethods(cL)
         if any(['coordinates metadata differ' in i for i in ce_.args[0]]):
             tmp = flt_l([_collect_errCC(i) for i in ce_.args[0]
                          if 'coordinates metadata differ' in i])
             if 'height' in tmp:
-                ll_("cccc: set COORD 'height' points to those of cubeL[0]")
-                _unify_1coord_points(cubeL, 'height', atol=10)
+                ll_("cccc: set COORD 'height' points to those of first CUBE")
+                _unify_1coord_points(cL, 'height', atol=10)
                 tmp.remove('height')
             if len(tmp) > 0:
-                _unify_coord_attrs(cubeL, tmp)
+                _unify_coord_attrs(cL, tmp)
         try:
-            o = cubeL.concatenate_cube()
+            o = cL.concatenate_cube()
         except iris.exceptions.ConcatenateError as ce_:
             if any(['Expected only a single cube' in i for i in ce_.args[0]]):
-                _unify_xycoord_points(cubeL, **close_kwArgs)
-            o = cubeL.concatenate_cube()
+                _unify_xycoord_points(cL, **close_kwArgs)
+            o = cL.concatenate_cube()
     return o
 
 
-def merge_cube_(cubeL, **close_kwArgs):
-    purefy_cubeL_(cubeL)
+def merge_cube_(cL, **close_kwArgs):
+    purefy_cubeL_(cL)
     try:
-        o = cubeL.merge_cube()
+        o = cL.merge_cube()
     except iris.exceptions.MergeError as ce_:
         if any(['Data types' in i for i in ce_.args[0]]):
-            _unify_dtype(cubeL)
+            _unify_dtype(cL)
         if any(['Cube metadata' in i for i in ce_.args[0]]):
-            _unify_cellmethods(cubeL)
+            _unify_cellmethods(cL)
         if any(['coordinates metadata differ' in i for i in ce_.args[0]]):
             tmp = flt_l([_collect_errCC(i) for i in ce_.args[0]
                          if 'coordinates metadata differ' in i])
             if 'height' in tmp:
-                ll_("cccc: set COORD 'height' points to those of cubeL[0]")
-                _unify_1coord_points(cubeL, 'height', atol=10)
+                ll_("cccc: set COORD 'height' points to those of cL[0]")
+                _unify_1coord_points(cL, 'height', atol=10)
                 tmp.remove('height')
             if len(tmp) > 0:
-                _unify_coord_attrs(cubeL, tmp)
+                _unify_coord_attrs(cL, tmp)
         try:
-            o = cubeL.merge_cube()
+            o = cL.merge_cube()
         except iris.exceptions.MergeError as ce_:
             if any(['Expected only a single cube' in i for i in ce_.args[0]]):
-                _unify_xycoord_points(cubeL, **close_kwArgs)
-            o = cubeL.merge_cube()
+                _unify_xycoord_points(cL, **close_kwArgs)
+            o = cL.merge_cube()
     return o
 
 
-def en_mxn_(eCube):
+def en_mxn_(c):
     """
-    ... ensemble max of a cube (along dimcoord 'realization') ...
+    ... ensemble max of CUBE (along dimcoord 'realization') ...
     """
-    if eCube.coord_dims('realization'):
-        a = en_max_(eCube)
-        b = en_min_(eCube)
+    if c.coord_dims('realization'):
+        a = en_max_(c)
+        b = en_min_(c)
         o = a - b
         o.rename(a.name())
         return o
 
 
-def en_min_(eCube):
+def en_min_(c):
     """
-    ... ensemble max of a cube (along dimcoord 'realization') ...
+    ... ensemble max of CUBE (along dimcoord 'realization') ...
     """
-    if eCube.coord_dims('realization'):
-        return eCube.collapsed('realization', iris.analysis.MIN)
+    if c.coord_dims('realization'):
+        return c.collapsed('realization', iris.analysis.MIN)
 
 
-def en_max_(eCube):
+def en_max_(c):
     """
-    ... ensemble max of a cube (along dimcoord 'realization') ...
+    ... ensemble max of CUBE (along dimcoord 'realization') ...
     """
-    if eCube.coord_dims('realization'):
-        return eCube.collapsed('realization', iris.analysis.MAX)
+    if c.coord_dims('realization'):
+        return c.collapsed('realization', iris.analysis.MAX)
 
 
-def en_mean_(eCube, **kwArgs):
+def en_mean_(c, **kwArgs):
     """
-    ... ensemble mean of a cube (along dimcoord 'realization') ...
+    ... ensemble mean of CUBE (along dimcoord 'realization') ...
     """
-    if eCube.coord_dims('realization'):
-        return eCube.collapsed('realization', iris.analysis.MEAN, **kwArgs)
+    if c.coord_dims('realization'):
+        return c.collapsed('realization', iris.analysis.MEAN, **kwArgs)
 
 
-def en_iqr_(eCube):
+def en_iqr_(c):
     """
-    ... ensemble interquartile range (IQR) of a cube (along dimcoord
+    ... ensemble interquartile range (IQR) of CUBE (along dimcoord
         'realization') ...
     """
-    if eCube.coord_dims('realization'):
-        a = eCube.collapsed('realization', iris.analysis.PERCENTILE,
-                            percent=75)
-        b = eCube.collapsed('realization', iris.analysis.PERCENTILE,
-                            percent=25)
+    if c.coord_dims('realization'):
+        a = c.collapsed('realization', iris.analysis.PERCENTILE, percent=75)
+        b = c.collapsed('realization', iris.analysis.PERCENTILE, percent=25)
         o = a - b
         o.rename(a.name())
         return o
 
 
-def kde_cube(cube, **kde_opts):
+def kde_cube(c, **kde_opts):
     """
     ... kernal distribution estimate over all nomasked data ...
     """
-    data = nanMask_(cube.data).flatten()
+    data = nanMask_(c.data).flatten()
     data = data[~np.isnan(data)]
     data = data.astype(np.float64)
     return kde_(data, **kde_opts)
 
 
-def _rip(cube):
+def _rip(c):
     """
-    ... get rxixpx from cube metadata ...
+    ... get rxixpx from CUBE metadata ...
     """
-    if 'parent_experiment_rip' in cube.attributes:
-        return cube.attributes['parent_experiment_rip']
-    elif 'driving_model_ensemble_member' in cube.attributes:
-        return cube.attributes['driving_model_ensemble_member']
+    if 'parent_experiment_rip' in c.attributes:
+        return c.attributes['parent_experiment_rip']
+    elif 'driving_model_ensemble_member' in c.attributes:
+        return c.attributes['driving_model_ensemble_member']
     else:
         return None
 
 
-def en_rip_(cubeL):
+def en_rip_(cL):
     """
-    ... ensemble cube over rxixpxs (along dimcoord 'realization') ...
+    ... ensemble CUBE over rxixpxs (along dimcoord 'realization') ...
     """
-    for i, c in enumerate(cubeL):
+    for i, c in enumerate(cL):
         rip = _rip(c)
         rip = str(i) if rip is None else rip
         new_coord = _iAuxC(rip,
@@ -1437,10 +1463,10 @@ def en_rip_(cubeL):
                            units='no_unit')
         c.add_aux_coord(new_coord)
         c.attributes = {}
-    return cubeL.merge_cube()
+    return cL.merge_cube()
 
 
-def en_mm_cubeL_(cubeL, opt=0, cref=None):
+def en_mm_cubeL_(cL, opt=0, cref=None):
     """
     ... make ensemble cube for multimodels ...
     
@@ -1449,7 +1475,7 @@ def en_mm_cubeL_(cubeL, opt=0, cref=None):
              0: rgd_li_opt0_; try rgd_iris_ first then rgd_scipy_
              1: rgd_iris_
              2: rgd_scipy_
-        cref: reference CUBE (default 1st CUBE in cubeL)
+        cref: reference CUBE (default 1st CUBE in CubeList)
 
     useful info:
         >>> help(rgd_li_opt0_)
@@ -1459,7 +1485,7 @@ def en_mm_cubeL_(cubeL, opt=0, cref=None):
     from .rgd import rgd_scipy_, rgd_iris_, rgd_li_opt0_
     tmpD = {}
     cl = []
-    for i, c in enumerate(cubeL):
+    for i, c in enumerate(cL):
         c.attributes = {}
         if cref is None:
             cref = tmpD.setdefault('ref', c.copy())
@@ -1479,9 +1505,7 @@ def en_mm_cubeL_(cubeL, opt=0, cref=None):
                                long_name='realization',
                                units='no_unit'))
         cl.append(a)
-    cl = _CubeList(cl)
-    eCube = cl.merge_cube()
-    return eCube
+    return _CubeList(cl).merge_cube()
 
 
 def _func(func, ak_):
@@ -1646,9 +1670,15 @@ def alng_axis_(arrs, ax, func, out, *args, **kwargs):
         _isb(i, tmp, out, ax)
 
 
-def initAnnualCube_(c0, y0y1,
-                    name=None, units=None, var_name=None, long_name=None,
-                    attrU=None, mmm='j-d'):
+def initAnnualCube_(
+        c0, y0y1,
+        name=None,
+        units=None,
+        var_name=None,
+        long_name=None,
+        attrU=None,
+        mmm='j-d',
+        ):
     """
     ... initiate annual cube ...
 
@@ -1724,7 +1754,7 @@ def initAnnualCube_(c0, y0y1,
 
 
 def pSTAT_cube(
-        cube,
+        c0,
         *freq,
         stat='MEAN',
         valid_season=True,
@@ -1734,8 +1764,8 @@ def pSTAT_cube(
     ... period statistic ...
 
     Args:
-                cube: CUBE to be analyzed
-                stat: eval('iris.analysis.{}'.format(stat))
+                  c0: CUBE to be analyzed
+                stat: getattr(iris.analysis, stat)
                 freq: frequency for statistic
     kwArgs:
         valid_season: if True and season mmm is crossing years, the 1st & end
@@ -1761,17 +1791,17 @@ def pSTAT_cube(
                hour=('hour', 'year'))
 
     d_ = dict(year=('year',),
-             season=('season',),
-             month=('month',),
-             day=('doy',),
-             hour=('hour',))
+              season=('season',),
+              month=('month',),
+              day=('doy',),
+              hour=('hour',))
 
     dd = dict(hour=(_ica.add_hour, ('time',), dict(name='hour')),
               day=(_ica.add_day_of_year, ('time',), dict(name='doy')),
               month=(_ica.add_month, ('time',), dict(name='month')),
               year=(_ica.add_year, ('time',), dict(name='year')),
-              season=(_ica.add_season, ('time',), dict(name='season',
-                                                      seasons=s4)),
+              season=(_ica.add_season, ('time',),
+                      dict(name='season', seasons=s4)),
               seasonyr=(seasonyr_cube, (s4,), dict(name='seasonyr')))
 
     def _x(f0):
@@ -1842,12 +1872,12 @@ def pSTAT_cube(
             elif isMonth_(mmm):
                 cstr = iris.Constraint(**{'month': mmm})
             c = c.extract(cstr)
-            tmp = c.aggregated_by(dff, eval('iris.analysis.' + stat),
+            tmp = c.aggregated_by(dff, getattr(iris.analysis, stat),
                                   **stat_opts)
             if isSeason_(mmm) and not ismono_(mmmN_(mmm)):
                 tmp = extract_byAxes_(tmp, 'time', np.s_[1:-1])
         else:
-            tmp = c.aggregated_by(dff, eval('iris.analysis.' + stat),
+            tmp = c.aggregated_by(dff, getattr(iris.analysis, stat),
                                   **stat_opts)
             if x == 'season' and valid_season:
                 tmp = extract_byAxes_(tmp, 'time', np.s_[1:-1])
@@ -1857,25 +1887,25 @@ def pSTAT_cube(
     freqs = ('year',) if len(freq) == 0 else freq
     o = ()
     for ff in [i.split('-') if '-' in i else i for i in freqs]:
-        tmp = _xxx(cube.copy(), ff)
+        tmp = _xxx(c0.copy(), ff)
         o += (tmp,)
     return o[0] if len(o) == 1 else o
 
 
-def repair_cs_(cube):
+def repair_cs_(c0):
     def _repair_cs_cube(c):
         cs = c.coord_system('CoordSystem')
         if cs is not None:
             for k in cs.__dict__.keys():
-                if eval('cs.' + k) is None:
-                    exec('cs.' + k + ' = ""')
+                if getattr(cs, k) is None:
+                    setattr(cs, k, "")
         for coord in c.coords():
             if coord.coord_system is not None:
                 coord.coord_system = cs
-    if isinstance(cube, _Cube):
-        _repair_cs_cube(cube)
-    elif isMyIter_(cube):
-        for i in cube:
+    if isinstance(c0, _Cube):
+        _repair_cs_cube(c0)
+    elif isMyIter_(c0):
+        for i in c0:
             if isinstance(i, _Cube):
                 _repair_cs_cube(i)
 
@@ -1900,28 +1930,28 @@ def _repair_lccs_cube(c, out=False):
         return o_
 
 
-def repair_lccs_(cube):
-    if isinstance(cube, _Cube):
-        _repair_lccs_cube(cube)
-    elif isMyIter_(cube):
-        for i in cube:
+def repair_lccs_(c):
+    if isinstance(c, _Cube):
+        _repair_lccs_cube(c)
+    elif isMyIter_(c):
+        for i in c:
             _repair_lccs_cube(i)
 
 
-def lccs_m2km_(cube):
-    if not isMyIter_(cube):
-        if isinstance(cube, _Cube):
-            cs = cube.coord_system('CoordSystem')
+def lccs_m2km_(c):
+    if not isMyIter_(c):
+        if isinstance(c, _Cube):
+            cs = c.coord_system('CoordSystem')
             if isinstance(cs, iris.coord_systems.LambertConformal):
-                for coord in cube.coords():
+                for coord in c.coords():
                     if coord.coord_system is not None:
                         coord.convert_units('km')
     else:
-        for i in cube:
+        for i in c:
             lccs_m2km_(i)
 
 
-def cubesv_(cube, filename,
+def cubesv_(c, filename,
             netcdf_format='NETCDF4',
             local_keys=None,
             zlib=True,
@@ -1935,13 +1965,13 @@ def cubesv_(cube, filename,
             packing=None,
             fill_value=None):
     """
-    ... save cube to nc with dim_t unlimitted ...
+    ... save CUBE to nc with dim_t unlimitted ...
     """
-    if isinstance(cube, _Cube):
-        #repair_lccs_(cube) # pls. execute outside the function if necessary
-        dms = [i.name() for i in cube.dim_coords]
+    if isinstance(c, _Cube):
+        #repair_lccs_(c) # pls. execute outside the function if necessary
+        dms = [i.name() for i in c.dim_coords]
         udm = ('time',) if 'time' in dms else None
-        iris.save(cube, filename,
+        iris.save(c, filename,
                   netcdf_format=netcdf_format,
                   local_keys=local_keys,
                   zlib=zlib,
@@ -1955,8 +1985,8 @@ def cubesv_(cube, filename,
                   packing=packing,
                   fill_value=fill_value,
                   unlimited_dimensions=udm)
-    elif isMyIter_(cube):
-        for i, ii in enumerate(cube):
+    elif isMyIter_(c):
+        for i, ii in enumerate(c):
             ext = ext_(filename)
             cubesv_(ii, filename.replace(ext, '_{}{}'.format(i, ext)))
 
@@ -2010,89 +2040,92 @@ def _ri1d(c1d, v):
         return np.nan
 
 
-def ri_cube(cube, v, nmin=10):
-    c = extract_byAxes_(cube, 'time', 0)
-    rm_sc_cube(c)
-    pst_(c, 'recurrence interval', units='year')
-    ax = axT_cube(cube)
-    if ax is None or cube.shape[ax] < nmin:
+def ri_cube(c, v, nmin=10):
+    o = extract_byAxes_(c, 'time', 0)
+    rm_sc_cube(o)
+    pst_(o, 'recurrence interval', units='year')
+    ax = axT_cube(c)
+    if ax is None or c.shape[ax] < nmin:
         emsg = "too few data for estimation!"
         raise Exception(emsg)
-    ax_fn_mp_(cube, ax, _ri1d, c, v)
-    return c
+    ax_fn_mp_(c, ax, _ri1d, o, v)
+    return o
 
 
-def nearest_point_cube(cube, longitude, latitude):
-    x, y = get_loa_pts_2d_(cube)
+def nearest_point_cube(c, longitude, latitude):
+    x, y = get_loa_pts_2d_(c)
     d_ = ind_shape_i_(x.shape,
                       np.argmin(haversine_(longitude, latitude, x, y)),
                       axis=None)
-    xyd = get_xyd_cube(cube)
-    ind = list(np.s_[:,] * cube.ndim)
+    xyd = get_xyd_cube(c)
+    ind = list(np.s_[:,] * c.ndim)
     for i, ii in zip(xyd, d_):
         ind[i] = ii
-    return cube[tuple(ind)]
+    return c[tuple(ind)]
 
 
-def nine_points_cube(cube, longitude, latitude):
-    x, y = get_loa_pts_2d_(cube)
+def nine_points_cube(c, longitude, latitude):
+    x, y = get_loa_pts_2d_(c)
     d_ = ind_shape_i_(x.shape,
                       np.argmin(haversine_(longitude, latitude, x, y)),
                       axis=None)
-    xyd = get_xyd_cube(cube)
+    xyd = get_xyd_cube(c)
     ind_ = np.arange(-1, 2, dtype=np.int32)
-    ind = list(np.s_[:,] * cube.ndim)
+    ind = list(np.s_[:,] * c.ndim)
     wmsg = ("Causious that center point may be given outside (or at the "
             "boundary of) the geo domain of the input CUBE!")
     for i, ii in zip(xyd, d_):
-        if ii == cube.shape[i] - 1:
+        if ii == c.shape[i] - 1:
             warnings.warn(wmsg)
             ii -= 1
         elif ii == 0:
             warnings.warn(wmsg)
             ii += 1
         ind[i] = ind_ + ii
-    return cube[tuple(ind)]
+    return c[tuple(ind)]
 
 
-def replace_coord_(cube, new_coord):
+def replace_coord_(c, new_coord):
     """
     Replace the coordinate whose metadata matches the given coordinate.
 
     """
-    old_coord = cube.coord(new_coord.name())
-    dims = cube.coord_dims(old_coord)
-    was_dimensioned = old_coord in cube.dim_coords
-    cube._remove_coord(old_coord)
-    if was_dimensioned and isinstance(new_coord, iris.coords.DimCoord):
-        cube.add_dim_coord(new_coord, dims[0])
+    old_coord = c.coord(new_coord.name())
+    dims = c.coord_dims(old_coord)
+    was_dimensioned = old_coord in c.dim_coords
+    c._remove_coord(old_coord)
+    if was_dimensioned and isinstance(new_coord, _iDimC):
+        c.add_dim_coord(new_coord, dims[0])
     else:
-        cube.add_aux_coord(new_coord, dims)
+        c.add_aux_coord(new_coord, dims)
 
-    for factory in cube.aux_factories:
+    for factory in c.aux_factories:
         factory.update(old_coord, new_coord)
 
 
-def doy_f_cube(cube,
-               f, fA_=(), fK_={},
+def doy_f_cube(c,
+               func,
+               fA_=(),
+               fK_={},
                ws=None,
                mF=None,
                out=None,
-               pp=False):
+               pp=False,
+               ):
     """
-    ... f(unction) for each doy ...
+    ... func(tion) for each doy ...
 
     kwArgs:
-       fA_, fK_: Args, kwArgs along with CUBE data to be passed to f
+       fA_, fK_: Args, kwArgs along with CUBE data to be passed to func
              ws: window size
              mF: for replacing missing value
             out: CUBE for storing output (default derived from input CUBE)
              pp: print process status
     """
 
-    ax_t = axT_cube(cube)
-    yr_doy_cube(cube)
-    doy_data = cube.coord('doy').points
+    ax_t = axT_cube(c)
+    yr_doy_cube(c)
+    doy_data = c.coord('doy').points
 
     doy_ = np.unique(doy_data)
     if len(doy_) < 360:
@@ -2100,16 +2133,16 @@ def doy_f_cube(cube,
     doy = np.arange(1, 367, dtype=np.int32)
 
     if out is None:
-        out = extract_byAxes_(cube, ax_t, doy - 1)
+        out = extract_byAxes_(c, ax_t, doy - 1)
         #select 2000 as it is a leap year...
         out.coord('time').units = cf_units.Unit(
                 'days since 1850-1-1',
-                calendar='gregorian'
+                calendar='standard',
                 )
         d0 = cf_units.date2num(
                 datetime(2000, 1, 1),
                 out.coord('time').units.origin,
-                out.coord('time').units.calendar
+                out.coord('time').units.calendar,
                 )
         dimT = out.coord('time').copy(doy - 1 + d0)
         out.replace_coord(dimT)
@@ -2117,15 +2150,15 @@ def doy_f_cube(cube,
     if pp:
         t0 = l__('0', _p=True)
 
-    data_ = np.ma.filled(cube.data, mF) if mF is not None else cube.data
+    data_ = np.ma.filled(c.data, mF) if mF is not None else c.data
     if pp:
         ll_('releazing', t0=t0, _p=True)
 
     for i in doy:
         indw = ind_win_(doy_data, i, 15) if ws else np.isin(doy_data, i)
-        ind = ind_s_(cube.ndim, ax_t, indw)
+        ind = ind_s_(c.ndim, ax_t, indw)
         f_kArgs.update(dict(axis=ax_t, keepdims=True))
-        tmp = f(data_[ind], *fA_, **fK_)
+        tmp = func(data_[ind], *fA_, **fK_)
         out.data[ind_s_(out.ndim, axT_cube(out), doy == i)] = tmp
         if pp:
             ll_('{}'.format(i), t0=t0, _p=True)
@@ -2172,11 +2205,11 @@ def corr_cube_(cube_a, cube_b,
     * cube_a, cube_b (cubes):
         Cubes between which the correlation will be calculated.  The cubes
         should either be the same shape and have the same dimension coordinates
-        or one cube should be broadcastable to the other.
+        or one CUBE should be broadcastable to the other.
     * corr_coords (str or list of str):
-        The cube coordinate name(s) over which to calculate correlations. If no
+        The CUBE coordinate name(s) over which to calculate correlations. If no
         names are provided then correlation will be calculated over all common
-        cube dimensions.
+        CUBE dimensions.
     * weights (numpy.ndarray, optional):
         Weights array of same shape as (the smaller of) cube_a and cube_b. Note
         that latitude/longitude area weights can be calculated using
@@ -2191,18 +2224,18 @@ def corr_cube_(cube_a, cube_b,
     * common_mask (bool):
         If True, applies a common mask to cube_a and cube_b so only cells which
         are unmasked in both cubes contribute to the calculation. If False, the
-        variance for each cube is calculated from all available cells. Defaults
+        variance for each CUBE is calculated from all available cells. Defaults
     * alpha (float, optional):
         If specified, a critical coorelation value (p=alpha) will be given
-        along with the output cube
+        along with the output CUBE
     Returns:
-        A cube of the correlation between the two input cubes along the
+        A CUBE of the correlation between the two input cubes along the
         specified dimensions, at each point in the remaining dimensions of the
         cubes.
 
         For example providing two time/altitude/latitude/longitude cubes and
         corr_coords of 'latitude' and 'longitude' will result in a
-        time/altitude cube describing the latitude/longitude (i.e. pattern)
+        time/altitude CUBE describing the latitude/longitude (i.e. pattern)
         correlation at each time/altitude point.
 
     Reference:
@@ -2251,7 +2284,7 @@ def corr_cube_(cube_a, cube_b,
 
     # Match up data masks if required.
     if common_mask:
-        # Create a cube of 1's with a common mask.
+        # Create CUBE of 1's with a common mask.
         if ma.is_masked(cube_2.data):
             mask_cube = _ones_like(cube_2)
         else:
@@ -2269,7 +2302,7 @@ def corr_cube_(cube_a, cube_b,
             cube_1_slice = next(cube_1.slices_over(slice_coords))
             mask_cube = _ones_like(cube_1_slice) * mask_cube
         # Apply common mask to data.
-        if isinstance(mask_cube, iris.cube.Cube):
+        if isinstance(mask_cube, _Cube):
             cube_1 = cube_1 * mask_cube
             cube_2 = mask_cube * cube_2
             dim_coords_2 = [coord.name() for coord in cube_2.dim_coords]
