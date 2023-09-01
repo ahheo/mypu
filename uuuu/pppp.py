@@ -7,7 +7,7 @@ import cartopy.crs as ccrs
 import os
 import warnings
 
-from .ffff import nanMask_, kde__, flt_, flt_l, isIter_
+from .ffff import nanMask_, kde__, flt_, flt_l, isIter_, rpt_, ind_inRange_
 from .cccc import y0y1_of_cube, extract_period_cube
 
 
@@ -28,6 +28,7 @@ __all__ = ['aligned_cb_',
            'cdf_iANDe_',
            'distri_swe_',
            'get_1st_patchCollection_',
+           'geoTkLbl_',
            'hatch_cube',
            'heatmap',
            'hspace_ax_',
@@ -37,6 +38,7 @@ __all__ = ['aligned_cb_',
            'imp_ll_',
            'imp_swe_',
            'pdf_iANDe_',
+           'pstGeoAx_',
            'ts_eCube_',
            'wspace_ax_']
 
@@ -963,3 +965,48 @@ def annotate_heatmap(
             texts.append(text)
 
     return texts
+
+
+def geoTkLbl_(ax):
+    _lat = lambda x: rpt_(x, 180, -180)
+    ax.xaxis.set_major_formatter(
+            lambda x, pos: '{}\xb0E'.format(_lat(x)) if _lat(x) > 0 else
+            ('{}\xb0W'.format(abs(_lat(x))) if _lat(x) < 0 else '0')
+            )
+    ax.yaxis.set_major_formatter(
+            lambda x, pos: '{}\xb0N'.format(x) if x > 0 else
+            ('{}\xb0S'.format(abs(x)) if x < 0 else 'Eq.')
+            )
+
+
+def pstGeoAx_(ax, delta=(30, 20), coastline=True, **kwArgs):
+    proj = ccrs.PlateCarree()
+    if coastline:
+        ax.coastlines(linewidth=0.2, color="darkgray")
+    glD = dict(
+            crs=ccrs.PlateCarree(),
+            draw_labels={"bottom": "x", "left": "y"},
+            xpadding=-.1,
+            ypadding=-.1,
+            xlabel_style=dict(color="dimgray", fontsize=8),
+            ylabel_style=dict(color="dimgray", fontsize=8),
+            dms=True,
+            lw=.5,
+            color="darkgray",
+            alpha=.5,
+            )
+    if delta:
+        x0, x1, y0, y1 = ax.get_extent(crs=proj)
+        if any(i > 180 for i in (x0, x1)):
+            _xtks = np.arange(0, 360, 5)
+        else:
+            _xtks = np.arange(-180, 180, 5)
+        _xind = ind_inRange_(_xtks, x0, x1)
+        _ytks = np.arange(-90, 90, 5)
+        _yind = ind_inRange_(_ytks, y0, y1)
+        glD.update(dict(
+            xlocs = [i for i in _xtks[_xind] if i%delta[0] == 0],
+            ylocs = [i for i in _ytks[_yind] if i%delta[1] == 0],
+            ))
+    glD.update(kwArgs)
+    gl = ax.gridlines(**glD)
