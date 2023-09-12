@@ -95,6 +95,34 @@ def _get_clo(cube):
     return clo
 
 
+def imp2_swe_(
+        cube0,
+        cube1,
+        *subplotspec,
+        fig=None,
+        func="pcolormesh",
+        rg=None,
+        axK_={},
+        pK_={},
+        ):
+    ext = _mapext(rg=rg, cube=cube0)
+    if isinstance(clo_, (int, float)):
+        clo = clo_
+    elif clo_ == 'cs':
+        clo = _get_clo(cube0)
+    else:
+        clo = _clo_ext(ext, h_=clo_)
+    proj = ccrs.NorthPolarStereo(central_longitude=clo)
+    return imp2_(cube0, cube1, *subplotspec,
+                fig=fig,
+                func=func,
+                proj=proj,
+                ext=ext,
+                axK_=axK_,
+                pK_=pK_,
+                )
+
+
 def imp_swe_(
         cube,
         *subplotspec,
@@ -122,6 +150,26 @@ def imp_swe_(
                 )
 
 
+def imp2_eur_(
+        cube0,
+        cube1,
+        *subplotspec,
+        fig=None,
+        func="pcolormesh",
+        rg=None,
+        axK_={},
+        pK_={},
+        ):
+    return imp2_(cube0, cube1, *subplotspec,
+                fig=fig,
+                func=func,
+                proj=ccrs.EuroPP(),
+                ext=_mapext(rg=rg, cube=cube0),
+                axK_=axK_,
+                pK_=pK_,
+                )
+
+
 def imp_eur_(
         cube,
         *subplotspec,
@@ -136,6 +184,26 @@ def imp_eur_(
                 func=func,
                 proj=ccrs.EuroPP(),
                 ext=_mapext(rg=rg, cube=cube),
+                axK_=axK_,
+                pK_=pK_,
+                )
+
+
+def imp2_ll_(
+        cube0,
+        cube1,
+        *subplotspec,
+        fig=None,
+        func="pcolormesh",
+        rg=None,
+        axK_={},
+        pK_={},
+        ):
+    return imp2_(cube0, cube1, *subplotspec,
+                fig=fig,
+                func=func,
+                proj=ccrs.PlateCarree(),
+                ext=_mapext(rg=rg, cube=cube0),
                 axK_=axK_,
                 pK_=pK_,
                 )
@@ -158,6 +226,27 @@ def imp_ll_(
                 axK_=axK_,
                 pK_=pK_,
                 )
+
+
+def imp2_(
+        cube0,
+        cube1,
+        *subplotspec,
+        fig=None,
+        func="pcolormesh",
+        proj=None,
+        ext=None,
+        axK_={},
+        pK_={},
+        ):
+    fig = plt.gcf() if fig is None else fig
+    ax = fig.add_subplot(*subplotspec, projection=proj)
+    if ext:
+        ax.set_extent(ext, crs=ccrs.PlateCarree())
+    axK_.setdefault("frame_on", False)
+    ax.set(**axK_)
+    o = _ll_cube2(cube0, cube1, axes=ax, func=func, **pK_)
+    return (ax, o)
 
 
 def imp_(
@@ -205,6 +294,28 @@ def hatch_cube(cube, **kwArgs):
     kwArgs.setdefault('zorder', 5)
     kwArgs.setdefault('colors', 'none')
     return _ll_cube(cube, func='contourf', **kwArgs)
+
+
+def _ll_cube2(
+        cube0,
+        cube1,
+        axes=None,
+        func='pcolormesh',
+        **kwArgs,
+        ):
+    axes = plt.gca() if axes is None else axes
+    support = ['quiver', 'barbs', 'streamplot']
+    assert func in support, f"func {func!r} not supported!"
+    if func in support[:2]:
+        _func = getattr(iplt, func)
+        o = _func(cube0, cube1, axes=axes, **kwArgs)
+    else:
+        _func = getattr(axes, func)
+        lo0, la0 = cube0.coord('longitude'), cube0.coord('latitude')
+        o = _func(lo0.points, la0.points, cube0.data, cube1.data,
+                  transform=ccrs.PlateCarree(),
+                  **kwArgs)
+    return o
 
 
 def _ll_cube(

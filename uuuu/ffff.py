@@ -56,8 +56,10 @@
 * prg_                  : string indicating progress status (e.g., '#002/999')
 * pure_fn_              : filename excluding path (& also extension by default)
 * rMEAN1d_              : rolling window mean
+* rMEAN2d_              : rolling window mean (2D)
 * rPeriod_              : [1985, 2019] -> '1985-2019'
 * rSUM1d_               : rolling window sum
+* rSUM2d_               : rolling window sum (2D)
 * rTime_                : a string of passing time
 * rest_mns_             : rest season named with month abbreviation
 * robust_bc2_           : robust alternative for numpy.broadcast_to
@@ -144,8 +146,10 @@ __all__ = ['aggr_func_',
            'prg_',
            'pure_fn_',
            'rMEAN1d_',
+           'rMEAN2d_',
            'rPeriod_',
            'rSUM1d_',
+           'rSUM2d_',
            'rTime_',
            'rest_mns_',
            'robust_bc2_',
@@ -953,7 +957,7 @@ def valid_seasons_(seasons, ismmm_=True):
         >>> valid_seasons_({'spring', 'summer', 'autumn', 'winter'})
         Out: False
         >>> valid_seasons_({'spring', 'summer', 'autumn', 'winter'},
-                          ismmm_=False)
+                           ismmm_=False)
         Out: True
         >>> valid_seasons_(['jja', 'son', 'djfmam'])
         Out: True
@@ -1098,11 +1102,20 @@ def rSUM1d_(
         mode: see np.convolve
 
     Examples:
+        >>> y = np.arange(6)
+        >>> y = np.ma.masked_equal(y, 3)
+        >>> y
+        Out[162]: 
+        masked_array(data=[0, 1, 2, --, 4, 5],
+                     mask=[False, False, False,  True, False, False],
+               fill_value=3)
         >>> rSUM1d_(y, 3)
+        Out: array([3., 3., 6., 9.])
+        >>> rSUM1d_(y.data, 3)
         Out: array([ 3.,  6.,  9., 12.])
-        >>> rSUM1d_(y, 3, mode='full')
+        >>> rSUM1d_(y.data, 3, mode='full')
         Out: array([ 0.,  1.,  3.,  6.,  9., 12.,  9.,  5.])
-        >>> rSUM1d_(y, 3, mode='same')
+        >>> rSUM1d_(y.data, 3, mode='same')
         Out: array([ 1.,  3.,  6.,  9., 12.,  9.])
     """
     if hasattr(y, 'mask'):
@@ -1110,6 +1123,68 @@ def rSUM1d_(
     else:
         msk = np.isnan(y)
     return np.convolve(np.where(msk, 0, y), np.ones((n,)), mode)
+
+
+def rSUM2d_(
+        y,
+        m,
+        n,
+        mode='valid',
+        ):
+    """
+    ... sum over a n-point rolling_window ...
+
+    Args:
+           y: 1d array
+           m: size of rolling window along axis=0
+           n: size of rolling window along axis=1
+    kwArgs:
+        mode: see scipy.signal.convolve
+
+    Examples:
+        >>> y = np.arange(20).reshape(4, -1)
+        >>> y = np.ma.masked_equal(y, 3)
+        >>> y
+        Out:
+        masked_array(
+        data=[[0, 1, 2, --, 4],
+              [5, 6, 7, 8, 9],
+              [10, 11, 12, 13, 14],
+              [15, 16, 17, 18, 19]],
+        mask=[[False, False, False,  True, False],
+              [False, False, False, False, False],
+              [False, False, False, False, False],
+              [False, False, False, False, False]],
+        fill_value=3)
+        >>> rSUM2d_(y, 3, 3)
+        Out: 
+        array([[ 54.,  60.,  69.],
+               [ 99., 108., 117.]])
+        >>> rSUM2d_(y.data, 3, 3)
+        Out: 
+        array([[ 54.,  63.,  72.],
+               [ 99., 108., 117.]])
+        >>> rSUM2d_(y.data, 3, 3, mode='full')
+        Out:
+        array([[  0.,   1.,   3.,   6.,   9.,   7.,   4.],
+               [  5.,  12.,  21.,  27.,  33.,  24.,  13.],
+               [ 15.,  33.,  54.,  63.,  72.,  51.,  27.],
+               [ 30.,  63.,  99., 108., 117.,  81.,  42.],
+               [ 25.,  52.,  81.,  87.,  93.,  64.,  33.],
+               [ 15.,  31.,  48.,  51.,  54.,  37.,  19.]])
+        >>> rSUM2d_(y.data, 3, 3, mode='same')
+        Out: 
+        array([[ 12.,  21.,  27.,  33.,  24.],
+               [ 33.,  54.,  63.,  72.,  51.],
+               [ 63.,  99., 108., 117.,  81.],
+               [ 52.,  81.,  87.,  93.,  64.]])
+    """
+    from scipy.signal import convolve2d
+    if hasattr(y, 'mask'):
+        msk = np.ma.getmaskarray(y)
+    else:
+        msk = np.isnan(y)
+    return convolve2d(np.where(msk, 0, y), np.ones((m, n)), mode)
 
 
 def rMEAN1d_(
@@ -1127,11 +1202,23 @@ def rMEAN1d_(
         mode: see np.convolve
 
     Examples:
+        >>> y = np.arange(6)
+        >>> y = np.ma.masked_equal(y, 3)
+        >>> y
+        Out[162]: 
+        masked_array(data=[0, 1, 2, --, 4, 5],
+                     mask=[False, False, False,  True, False, False],
+               fill_value=3)
         >>> rMEAN1d_(y, 3)
+        Out[165]: 
+        masked_array(data=[1. , 1.5, 3. , 4.5],
+                     mask=False,
+               fill_value=1e+20)
+        >>> rMEAN1d_(y.data, 3)
         Out: array([1., 2., 3., 4.])
-        >>> rMEAN1d_(y, 3, mode='full')
+        >>> rMEAN1d_(y.data, 3, mode='full')
         Out: array([0. , 0.5, 1. , 2. , 3. , 4. , 4.5, 5. ])
-        >>> rMEAN1d_(y, 3, mode='same')
+        >>> rMEAN1d_(y.data, 3, mode='same')
         Out: array([0.5, 1. , 2. , 3. , 4. , 4.5])
     """
     if hasattr(y, 'mask'):
@@ -1140,6 +1227,76 @@ def rMEAN1d_(
         msk = np.isnan(y)
     uu = np.convolve(np.where(msk, 0, y), np.ones((n,)), mode)
     dd = np.convolve(~msk, np.ones((n,)), mode)
+    dd[dd == 0] = np.nan
+    out = uu / dd
+    return np.ma.masked_where(np.isnan(out), out) if hasattr(y, 'mask') else\
+           out
+
+
+def rMEAN2d_(
+        y,
+        m,
+        n,
+        mode='valid',
+        ):
+    """
+    ... mean over a n-point rolling_window ...
+
+    Args:
+           y: 2d array
+           m: size of rolling window along axis=0
+           n: size of rolling window along axis=1
+    kwArgs:
+        mode: see np.convolve
+
+    Examples:
+        >>> y = np.arange(20).reshape(4, -1)
+        >>> y = np.ma.masked_equal(y, 3)
+        >>> y
+        Out:
+        masked_array(
+        data=[[0, 1, 2, --, 4],
+              [5, 6, 7, 8, 9],
+              [10, 11, 12, 13, 14],
+              [15, 16, 17, 18, 19]],
+        mask=[[False, False, False,  True, False],
+              [False, False, False, False, False],
+              [False, False, False, False, False],
+              [False, False, False, False, False]],
+        fill_value=3)
+        >>> rMEAN2d_(y, 3, 3)
+        Out:
+        masked_array(
+        data=[[ 6.   ,  7.5  ,  8.625],
+              [11.   , 12.   , 13.   ]],
+        mask=False,
+        fill_value=1e+20)
+        >>> rSUM2d_(y.data, 3, 3)
+        Out:
+        array([[ 6.,  7.,  8.],
+               [11., 12., 13.]])
+        >>> rMEAN2d_(y.data, 3, 3, mode='full')
+        Out:
+        array([[ 0. ,  0.5,  1. ,  2. ,  3. ,  3.5,  4. ],
+               [ 2.5,  3. ,  3.5,  4.5,  5.5,  6. ,  6.5],
+               [ 5. ,  5.5,  6. ,  7. ,  8. ,  8.5,  9. ],
+               [10. , 10.5, 11. , 12. , 13. , 13.5, 14. ],
+               [12.5, 13. , 13.5, 14.5, 15.5, 16. , 16.5],
+               [15. , 15.5, 16. , 17. , 18. , 18.5, 19. ]])
+        >>> rMEAN2d_(y.data, 3, 3, mode='same')
+        Out: 
+        array([[ 3. ,  3.5,  4.5,  5.5,  6. ],
+               [ 5.5,  6. ,  7. ,  8. ,  8.5],
+               [10.5, 11. , 12. , 13. , 13.5],
+               [13. , 13.5, 14.5, 15.5, 16. ]])
+    """
+    from scipy.signal import convolve2d
+    if hasattr(y, 'mask'):
+        msk = np.ma.getmaskarray(y)
+    else:
+        msk = np.isnan(y)
+    uu = convolve2d(np.where(msk, 0, y), np.ones((m, n)), mode)
+    dd = convolve2d(~msk, np.ones((m, n)), mode)
     dd[dd == 0] = np.nan
     out = uu / dd
     return np.ma.masked_where(np.isnan(out), out) if hasattr(y, 'mask') else\
