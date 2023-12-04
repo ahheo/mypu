@@ -10,6 +10,7 @@
 * corr_cube_            : modified version of iris.analysis.stats.pearsonr
 * cubesv_               : save cube to nc with dim_t unlimitted
 * cut_as_cube           : cut into the domain of another cube
+* date_mv_mon_          : date displace by months
 * dim_axis_cube         : dimension of a specified axis of cube
 * dimc_axis_cube        : dimcoord of a specified axis of cube
 * doy_f_cube            : f for each doy
@@ -28,6 +29,7 @@
 * f_allD_cube           : iris analysis func over all dims of cube(L) (each)
 * getGridAL_cube        : grid_land_area
 * getGridA_cube         : grid_area from file or calc with basic assumption
+* get_dates_            : get datetime array from a brief string
 * get_gwl_y0_           : first year of 30-year window of global warming level
 * get_loa_              : longitude/latitude coords of cube
 * get_loa_dim_          : modified _get_lon_lat_coords from iris
@@ -53,6 +55,7 @@
 * minmax_cube           : minmax of cube(L) data (each)
 * minmax_cube_          : minmax of cube(L) data (all)
 * myAuxTime_            : create single value time auxcoord
+* myDimTime_            : create time dimcoord
 * nTslice_cube          : slices along a no-time axis
 * nearest_point_cube    : extract 1 point cube
 * nine_points_cube      : extract nine points cube centered at a given point
@@ -101,7 +104,7 @@ import numpy as np
 import cf_units
 import warnings
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from .ffff import *
 
@@ -114,6 +117,7 @@ __all__ = ['alng_axis_',
            'corr_cube_',
            'cubesv_',
            'cut_as_cube',
+           'date_mv_mon_',
            'dim_axis_cube',
            'dimc_axis_cube',
            'doy_f_cube',
@@ -132,6 +136,7 @@ __all__ = ['alng_axis_',
            'f_allD_cube',
            'getGridAL_cube',
            'getGridA_cube',
+           'get_dates_',
            'get_gwl_y0_',
            'get_loa_',
            'get_loa_dim_',
@@ -157,6 +162,7 @@ __all__ = ['alng_axis_',
            'minmax_cube',
            'minmax_cube_',
            'myAuxTime_',
+           'myDimTime_',
            'nTslice_cube',
            'nearest_point_cube',
            'nine_points_cube',
@@ -327,7 +333,7 @@ def dimc_axis_cube(c, axis):
 def nTslice_cube(c, n):
     """
     ... slices along a no-time axis ...
-    
+
     Args:
         c: CUBE or iterable CUBEs
         n: maximum size of a slice
@@ -490,7 +496,7 @@ def extract_season_cube(c, mmm, valid_season=True):
                  mmm: continuous-months' 1st letters (for example, 'djf')
     kwArgs:
         valid_season: if True and season mmm is crossing years, the 1st & end
-                      year will be excluded 
+                      year will be excluded
     """
     if isinstance(c, _Cube):
         if 'season' in (i.name() for i in c.coords()):
@@ -1007,9 +1013,9 @@ def rgF_cube(c, func, rg=None, **funcD):
     return tmp.collapsed([xc, yc], func, **funcD)
 
 
-def rgF_poly_cube(c, poly, func, **funcD):
+def rgF_poly_cube(c, poly, func, inpolyKA={}, **funcD):
     #warnings.filterwarnings("ignore", category=UserWarning)
-    ind = inpolygons_cube(c, poly, **kwArgs)
+    ind = inpolygons_cube(c, poly, **inpolyKA)
     tmp = iris.util.mask_cube(c.copy(), ~ind)
     xc, yc = get_xy_dim_(tmp)
     return tmp.collapsed([xc, yc], func, **funcD)
@@ -1029,7 +1035,7 @@ def rgCount_cube(c, sftlf=None, areacella=None, rg=None, func=None):
         ind = _get_ind_lolalim(c, **rg)
         ga0 = ga0 * ind
         ga = ga * ind
-    umsk = ~c.data.mask if (np.ma.isMaskedArray(c.data) and 
+    umsk = ~c.data.mask if (np.ma.isMaskedArray(c.data) and
                             np.ma.is_masked(c.data)) else 1
     sum0 = np.sum(ga0 * umsk, axis=xyd)
     if np.any(sum0 == 0):
@@ -1469,7 +1475,7 @@ def en_rip_(cL):
 def en_mm_cubeL_(cL, opt=0, cref=None):
     """
     ... make ensemble cube for multimodels ...
-    
+
     kwArgs:
          opt:
              0: rgd_li_opt0_; try rgd_iris_ first then rgd_scipy_
@@ -1769,7 +1775,7 @@ def pSTAT_cube(
                 freq: frequency for statistic
     kwArgs:
         valid_season: if True and season mmm is crossing years, the 1st & end
-                      year will be excluded 
+                      year will be excluded
            with_year: if year points to be taken into account during aggreation
            stat_opts: options to be passed to stat
     """
@@ -2166,8 +2172,8 @@ def doy_f_cube(c,
     return out
 
 
-def pcorr_cube(x, y, z, **cck):                                                         
-    assert x.shape == y.shape == z.shape                                        
+def pcorr_cube(x, y, z, **cck):
+    assert x.shape == y.shape == z.shape
     if 'corr_coords' not in cck:
         cck.update(dict(corr_coords='time'))
     if 'common_mask' not in cck:
@@ -2179,10 +2185,10 @@ def pcorr_cube(x, y, z, **cck):
             alpha=None,
             **cck
             )
-    rxy = _corr(x, y)                                                           
-    rxz = _corr(x, z)                                                           
+    rxy = _corr(x, y)
+    rxz = _corr(x, z)
     ryz = _corr(y, z)
-    covar = rxy - rxz * ryz                                                           
+    covar = rxy - rxz * ryz
     denom = _apply(np.sqrt, (1 - rxz**2) * (1 - ryz**2), new_unit=covar.units)
     corr_cube = covar / denom
     corr_cube.rename("Pearson's partial r")
@@ -2389,4 +2395,97 @@ def myAuxTime_(
     """
     _unit_ = cf_units.Unit(unit, calendar=calendar)
     dnum = cf_units.date2num(datetime(year, month, day, *hms), unit, calendar)
-    return iris.coords.AuxCoord(dnum, units=_unit_, standard_name='time')
+    return _iAuxC(dnum, units=_unit_, standard_name='time')
+
+
+def date_mv_mon_(date, dmm):
+    if 1 <= date.month + dmm <= 12:
+        return date.replace(month=date.month+dmm)
+    else:
+        return date.replace(year=date.year+(date.month+dmm-1)//12,
+                            month=rpt_(date.month+dmm, 13, 1))
+
+
+def get_dates_(datestr, delta='day'):
+    def _get_ymdhms(s):
+        if ((len(s) < 4) or
+            (':' in s and s.index(":") != 8) or
+            (':' not in s and len(s) > 8)):
+            raise Exception("unknown date string!")
+        ss = ((0, 4), (4, 6), (6, 8), (9, 11), (11, 13), (13, 15))
+        def _int(sss):
+            if s[slice(*sss)]:
+                return int(s[slice(*sss)])
+        return tuple(_int(_s) for _s in ss if _int(_s))
+
+    delta_day = timedelta(days=1)
+    if '-' not in datestr:
+        ymd = _get_ymdhms(datestr)
+        if len(ymd) == 1:
+            date0 = datetime(*ymd, 1, 1)
+            date1 = datetime(*ymd, 12, 31)
+        elif len(ymd) == 2:
+            date0 = datetime(*ymd, 1)
+            date1 = datetime(ymd[0] + ymd[1]//12,
+                             ymd[1]%12 + 1,
+                             1) - delta_day
+        else:
+            date0 = datetime(*ymd)
+            date1 = date0
+    else:
+        date_ = datestr.split('-')
+        if len(date_[0]) != len(date_[1]) or date_[0] >= date_[1]:
+            emsg = "I don't know what to do with the specipfied DATE!"
+            raise Exception(emsg)
+        else:
+            ymd0 = _get_ymdhms(date_[0])
+            ymd1 = _get_ymdhms(date_[1])
+        if len(ymd0) == 1:
+            date0 = datetime(*ymd0, 1, 1)
+            date1 = datetime(*ymd1, 12, 31)
+        elif len(ymd0) == 2:
+            date0 = datetime(*ymd0, 1)
+            date1 = datetime(ymd1[0] + ymd1[1]//12,
+                             ymd1[1]%12 + 1,
+                             1) - delta_day
+        else:
+            date0 = datetime(*ymd0)
+            date1 = datetime(*ymd1)
+    o = []
+    while (date0 <= date1):
+        o.append(date0)
+        if delta in ('second', 'minute', 'hour', 'day', 'week',):
+            incr = timedelta(**{delta+'s': 1})
+            date0 += incr
+        elif re.match('(\d+)(\w+)', delta):
+            _n, _delta = re.findall('(\d+)(\w+)', delta)[0]
+            if _delta in ('second', 'minute', 'hour', 'day', 'week',):
+                incr = timedelta(**{_delta+'s': int(_n)})
+                date0 += incr
+        elif delta == 'month':
+            date0 = date_mv_mon_(date0, 1)
+        elif re.match('(\d+)month', delta):
+            _n = re.findall('(\d+)month', delta)[0]
+            date0 = date_mv_mon_(date0, int(_n))
+    return np.asarray(o)
+
+
+def myDimTime_(
+        datestr,
+        delta='day',
+        unit='days since 1900-1-1',
+        calendar='standard',
+        ):
+    """
+    ... create time dimcoord ...
+
+    Args:
+        datestr (str): date string
+          delta (str): time delta (default 1 day)
+
+    kwArgs:
+        unit, calendar (string): see cf_unit
+    """
+    _unit_ = cf_units.Unit(unit, calendar=calendar)
+    dnum = cf_units.date2num(get_dates_(datestr, delta=delta), unit, calendar)
+    return _iDimC(dnum, units=_unit_, standard_name='time')
