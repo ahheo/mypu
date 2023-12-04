@@ -9,10 +9,12 @@
 * concat_cube_          : robust cube concatenator
 * corr_cube_            : modified version of iris.analysis.stats.pearsonr
 * cubesv_               : save cube to nc with dim_t unlimitted
+* curl_cube             : curl of (ucube, vcube)
 * cut_as_cube           : cut into the domain of another cube
 * date_mv_mon_          : date displace by months
 * dim_axis_cube         : dimension of a specified axis of cube
 * dimc_axis_cube        : dimcoord of a specified axis of cube
+* div_cube              : divergence of (ucube, vcube)
 * doy_f_cube            : f for each doy
 * en_iqr_               : ensemble interquartile range
 * en_max_               : ensemble max
@@ -79,6 +81,7 @@
 * rm_yr_doy_cube        : opposite action of yr_doy_cube
 * seasonyr_cube         : season_year auxcoord
 * slice_back_           : slice back to parent (1D)
+* smth_cube             : smoothing cube over XY axes
 * unique_yrs_of_cube    : unique year points of cube
 * y0y1_of_cube          : starting and ending year of cube
 * yr_doy_cube           : year and day-of-year auxcoord
@@ -116,10 +119,12 @@ __all__ = ['alng_axis_',
            'concat_cube_',
            'corr_cube_',
            'cubesv_',
+           'curl_cube',
            'cut_as_cube',
            'date_mv_mon_',
            'dim_axis_cube',
            'dimc_axis_cube',
+           'div_cube',
            'doy_f_cube',
            'en_iqr_',
            'en_max_',
@@ -186,6 +191,7 @@ __all__ = ['alng_axis_',
            'rm_yr_doy_cube',
            'seasonyr_cube',
            'slice_back_',
+           'smth_cube',
            'unique_yrs_of_cube',
            'y0y1_of_cube',
            'yr_doy_cube']
@@ -1765,6 +1771,7 @@ def pSTAT_cube(
         stat='MEAN',
         valid_season=True,
         with_year=True,
+        list_out=False,
         **stat_opts):
     """
     ... period statistic ...
@@ -1895,7 +1902,7 @@ def pSTAT_cube(
     for ff in [i.split('-') if '-' in i else i for i in freqs]:
         tmp = _xxx(c0.copy(), ff)
         o += (tmp,)
-    return o[0] if len(o) == 1 else o
+    return o[0] if len(o) == 1 and not list_out else o
 
 
 def repair_cs_(c0):
@@ -2398,6 +2405,7 @@ def myAuxTime_(
     return _iAuxC(dnum, units=_unit_, standard_name='time')
 
 
+<<<<<<< HEAD
 def date_mv_mon_(date, dmm):
     if 1 <= date.month + dmm <= 12:
         return date.replace(month=date.month+dmm)
@@ -2489,3 +2497,91 @@ def myDimTime_(
     _unit_ = cf_units.Unit(unit, calendar=calendar)
     dnum = cf_units.date2num(get_dates_(datestr, delta=delta), unit, calendar)
     return _iDimC(dnum, units=_unit_, standard_name='time')
+
+
+def div_cube(uc, vc):
+    """
+    ... divergence of ucube and v cube ...
+    """
+    from iris.analysis.cartography import DEFAULT_SPHERICAL_EARTH_RADIUS as _r
+    ucxy = get_xy_dim_(uc, guess_lst2=False)
+    vcxy = get_xy_dim_(vc, guess_lst2=False)
+    amsg = "xycoords error!"
+    assert ucxy == vcxy and all(i is not None for i in ucxy), amsg
+    ucx, ucy = ucxy
+    if ucx.units.origin == ucy.units.origin == 'meters':
+        du = np.gradient(uc.data, ucx.points, axis=uc.coord_dims(ucx))
+        dv = np.gradient(vc.data, ucy.points, axis=uc.coord_dims(ucy))
+    elif ucx.units == ucy.units and 'degree' in ucx.units.origin:
+        du = np.gradient(uc.data, axis=uc.coord_dims(ucx))
+        dv = np.gradient(vc.data, axis=uc.coord_dims(ucy))
+        _ucx, _ucy = ucx.copy(), ucy.copy()
+        if uc.coord_dims(ucx) > uc.coord_dims(ucy):
+            x2d, y2d = np.meshgrid(_ucx.points, _ucy.points)
+            xdim, ydim = 1, 0
+        else:
+            y2d, x2d = np.meshgrid(_ucy.points, _ucx.points)
+            xdim, ydim = 0, 1
+        wx = (np.gradient(np.deg2rad(x2d.astype(np.float64)), axis=xdim) *
+              np.cos(np.deg2rad(y2d.astype(np.float64))) *
+              _r)
+        wy = np.gradient(np.deg2rad(y2d.astype(np.float64)), axis=ydim) * _r
+        du, dv = du / wx, dv / wy
+    else:
+        emsg = "check the units in xycoords. We accept 'meters' or 'degrees'!"
+        raise(emsg)
+    o = uc.copy(du + dv)
+    o.rename('divergence')
+    o.units = sqzUnit_(f"{uc.units.origin} m**-1")
+    return o
+
+
+def curl_cube(uc, vc):
+    """
+    ... curl of ucube and v cube ...
+    """
+    from iris.analysis.cartography import DEFAULT_SPHERICAL_EARTH_RADIUS as _r
+    ucxy = get_xy_dim_(uc, guess_lst2=False)
+    vcxy = get_xy_dim_(vc, guess_lst2=False)
+    amsg = "xycoords error!"
+    assert ucxy == vcxy and all(i is not None for i in ucxy), amsg
+    ucx, ucy = ucxy
+    if ucx.units.origin == ucy.units.origin == 'meters':
+        du = np.gradient(uc.data, ucy.points, axis=uc.coord_dims(ucy))
+        dv = np.gradient(vc.data, ucx.points, axis=uc.coord_dims(ucx))
+    elif ucx.units == ucy.units and 'degree' in ucx.units.origin:
+        du = np.gradient(uc.data, axis=uc.coord_dims(ucy))
+        dv = np.gradient(vc.data, axis=uc.coord_dims(ucx))
+        _ucx, _ucy = ucx.copy(), ucy.copy()
+        if uc.coord_dims(ucx) > uc.coord_dims(ucy):
+            x2d, y2d = np.meshgrid(_ucx.points, _ucy.points)
+            xdim, ydim = 1, 0
+        else:
+            y2d, x2d = np.meshgrid(_ucy.points, _ucx.points)
+            xdim, ydim = 0, 1
+        wx = (np.gradient(np.deg2rad(x2d.astype(np.float64)), axis=xdim) *
+              np.cos(np.deg2rad(y2d.astype(np.float64))) *
+              _r)
+        wy = np.gradient(np.deg2rad(y2d.astype(np.float64)), axis=ydim) * _r
+        du, dv = du / wy, dv / wx
+    else:
+        emsg = "check the units in xycoords. We accept 'meters' or 'degrees'!"
+        raise(emsg)
+    o = uc.copy(dv - du)
+    o.rename('curl')
+    o.units = sqzUnit_(f"{uc.units.origin} m**-1")
+    return o
+
+
+def smth_cube(c, m=9, n=9):
+    """
+    ... smoothing 2d cube ...
+    """
+    amsg = "xycoords error!"
+    ucxy = get_xy_dim_(c, guess_lst2=False)
+    o = []
+    for _sl in c.slices(ucxy):
+        data = rMEAN2d_(_sl.data, m, n, mode='same')
+        _sl.data = data
+        o.append(_sl)
+    return _CubeList(o).merge_cube()

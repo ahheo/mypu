@@ -102,6 +102,7 @@ def imp2_swe_(
         fig=None,
         func="pcolormesh",
         rg=None,
+        sc=1,
         axK_={},
         pK_={},
         ):
@@ -118,6 +119,7 @@ def imp2_swe_(
                 func=func,
                 proj=proj,
                 ext=ext,
+                sc=sc,
                 axK_=axK_,
                 pK_=pK_,
                 )
@@ -129,6 +131,7 @@ def imp_swe_(
         fig=None,
         func="pcolormesh",
         rg=None,
+        sc=1,
         axK_={},
         pK_={},
         ):
@@ -145,6 +148,7 @@ def imp_swe_(
                 func=func,
                 proj=proj,
                 ext=ext,
+                sc=sc,
                 axK_=axK_,
                 pK_=pK_,
                 )
@@ -157,6 +161,7 @@ def imp2_eur_(
         fig=None,
         func="pcolormesh",
         rg=None,
+        sc=1,
         axK_={},
         pK_={},
         ):
@@ -165,6 +170,7 @@ def imp2_eur_(
                 func=func,
                 proj=ccrs.EuroPP(),
                 ext=_mapext(rg=rg, cube=cube0),
+                sc=sc,
                 axK_=axK_,
                 pK_=pK_,
                 )
@@ -176,6 +182,7 @@ def imp_eur_(
         fig=None,
         func="pcolormesh",
         rg=None,
+        sc=1,
         axK_={},
         pK_={},
         ):
@@ -184,6 +191,7 @@ def imp_eur_(
                 func=func,
                 proj=ccrs.EuroPP(),
                 ext=_mapext(rg=rg, cube=cube),
+                sc=sc,
                 axK_=axK_,
                 pK_=pK_,
                 )
@@ -196,6 +204,7 @@ def imp2_ll_(
         fig=None,
         func="pcolormesh",
         rg=None,
+        sc=1,
         axK_={},
         pK_={},
         ):
@@ -204,6 +213,7 @@ def imp2_ll_(
                 func=func,
                 proj=ccrs.PlateCarree(),
                 ext=_mapext(rg=rg, cube=cube0),
+                sc=sc,
                 axK_=axK_,
                 pK_=pK_,
                 )
@@ -215,6 +225,7 @@ def imp_ll_(
         fig=None,
         func="pcolormesh",
         rg=None,
+        sc=1,
         axK_={},
         pK_={},
         ):
@@ -223,6 +234,7 @@ def imp_ll_(
                 func=func,
                 proj=ccrs.PlateCarree(),
                 ext=_mapext(rg=rg, cube=cube),
+                sc=sc,
                 axK_=axK_,
                 pK_=pK_,
                 )
@@ -233,9 +245,10 @@ def imp2_(
         cube1,
         *subplotspec,
         fig=None,
-        func="pcolormesh",
+        func="quiver",
         proj=None,
         ext=None,
+        sc=1,
         axK_={},
         pK_={},
         ):
@@ -245,7 +258,7 @@ def imp2_(
         ax.set_extent(ext, crs=ccrs.PlateCarree())
     axK_.setdefault("frame_on", False)
     ax.set(**axK_)
-    o = _ll_cube2(cube0, cube1, axes=ax, func=func, **pK_)
+    o = _ll_cube2(cube0, cube1, axes=ax, func=func, sc=sc, **pK_)
     return (ax, o)
 
 
@@ -256,6 +269,7 @@ def imp_(
         func="pcolormesh",
         proj=None,
         ext=None,
+        sc=1,
         axK_={},
         pK_={},
         ):
@@ -265,7 +279,7 @@ def imp_(
         ax.set_extent(ext, crs=ccrs.PlateCarree())
     axK_.setdefault("frame_on", False)
     ax.set(**axK_)
-    o = _ll_cube(cube, axes=ax, func=func, **pK_)
+    o = _ll_cube(cube, axes=ax, func=func, sc=sc, **pK_)
     return (ax, o)
 
 
@@ -300,19 +314,25 @@ def _ll_cube2(
         cube0,
         cube1,
         axes=None,
-        func='pcolormesh',
+        func='quiver',
+        sc=1,
         **kwArgs,
         ):
     axes = plt.gca() if axes is None else axes
     support = ['quiver', 'barbs', 'streamplot']
     assert func in support, f"func {func!r} not supported!"
-    if func in support[:2]:
-        _func = getattr(iplt, func)
-        o = _func(cube0, cube1, axes=axes, **kwArgs)
+    _func = getattr(axes, func)
+    lo0, la0 = cube0.coord('longitude'), cube0.coord('latitude')
+    if lo0.ndim == 2:
+        o = _func(lo0.points, la0.points, cube0.data*sc, cube1.data*sc,
+                  transform=ccrs.PlateCarree(),
+                  **kwArgs)
     else:
-        _func = getattr(axes, func)
-        lo0, la0 = cube0.coord('longitude'), cube0.coord('latitude')
-        o = _func(lo0.points, la0.points, cube0.data, cube1.data,
+        if cube0.coord_dims(lo0)[0] > cube0.coord_dims(la0)[0]:
+            x, y = np.meshgrid(lo0.points, la0.points)
+        else:
+            y, x = np.meshgrid(la0.points, lo0.points)
+        o = _func(x, y, cube0.data*sc, cube1.data*sc,
                   transform=ccrs.PlateCarree(),
                   **kwArgs)
     return o
@@ -322,6 +342,7 @@ def _ll_cube(
         cube,
         axes=None,
         func='pcolormesh',
+        sc=1,
         **kwArgs,
         ):
     axes = plt.gca() if axes is None else axes
@@ -329,19 +350,19 @@ def _ll_cube(
     assert func in support, f"func {func!r} not supported!"
     if func in support[-2:]:
         _func = getattr(iplt, func)
-        o = _func(cube, axes=axes, **kwArgs)
+        o = _func(cube.copy(cube.data*sc), axes=axes, **kwArgs)
     else:
         lo0, la0 = cube.coord('longitude'), cube.coord('latitude')
         if lo0.ndim == 1:
             _func = getattr(iplt, func)
-            o = _func(cube, axes=axes, **kwArgs)
+            o = _func(cube.copy(cube.data*sc), axes=axes, **kwArgs)
         else:
             if hasattr(lo0, 'has_bounds') and lo0.has_bounds():
                 x, y = lo0.contiguous_bounds(), la0.contiguous_bounds()
             else:
                 x, y = _2d_bounds(lo0.points, la0.points)
             _func = getattr(axes, func)
-            o = _func(x, y, cube.data,
+            o = _func(x, y, cube.data*sc,
                       transform=ccrs.PlateCarree(),
                       **kwArgs)
     return o
@@ -511,6 +532,54 @@ def aligned_cb_(
         cb.set_label(ti)
     return cb
 
+
+def aligned_qk_(
+        ax,
+        q,
+        U,
+        s,
+        pad=.02,
+        rPos='NE',
+        coordinates='figure',
+        **kwArgs,
+        ):
+    # _get_xy():
+    xmin, xmax, ymin, ymax = _minmaxXYlm(ax)
+    if isIter_(pad) and len(pad) == 2:
+        padx, pady = pad
+    elif not isIter_(pad):
+        padx = pady =pad
+    else:
+        raise("'pad' should be scalar (padx=pady) or arraylike (padx, pady)!")
+    if 'N' in rPos:
+        y = ymax + pady
+    elif 'n' in rPos:
+        y = ymax - pady
+    elif 'S' in rPos:
+        y = ymin - pady
+    elif 's' in rPos:
+        y = ymin + pady
+    else:
+        y = (ymin + ymax) * .5
+    if 'E' in rPos:
+        x = xmax + padx
+    elif 'e' in rPos:
+        x = xmax - padx
+    elif 'W' in rPos:
+        x = xmin - padx
+    elif 'w' in rPos:
+        x = xmin + padx
+    else:
+        x = (xmin + xmax) * .5
+    #print(f"padx:{padx}; pady:{pady}")
+    #print(f"xmin:{xmin}; xmax:{xmax}; ymin:{ymin}; ymax:{ymax};")
+    #print(f"x:{x}, y:{y}")
+    qk = plt.quiverkey(
+            q, x, y, U, s,
+            coordinates=coordinates,
+            **kwArgs
+            )
+    return qk
 
 def axs_abc_(
         fig,

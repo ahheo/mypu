@@ -67,6 +67,7 @@
 * schF_keys_            : find files by key words
 * shp_drop_             : drop dims specified (and replace if desired)
 * slctStrL_             : select string list include or exclude substr(s)
+* sqzUnit_              : squeeze unit
 * ss_fr_sl_             : subgroups that without intersections
 * sub_shp_              : subgroup a shape
 * timerMain_            : decorator for executable function
@@ -157,6 +158,7 @@ __all__ = ['aggr_func_',
            'schF_keys_',
            'shp_drop_',
            'slctStrL_',
+           'sqzUnit_',
            'ss_fr_sl_',
            'sub_shp_',
            'timerMain_',
@@ -225,7 +227,7 @@ def ss_fr_sl_(sl):
     o = []
     def _sssl(ss):                                                             # derive a union of all sets in sl that have intersection with the given set ss
         return set(flt_l([i for i in sl if any([ii in i for ii in ss])]))
-    def _ssl(vv):                                                              # get these unions 
+    def _ssl(vv):                                                              # get these unions
         si = set(list(vv)[:1])                                                 # starting from a single element
         while True:
             si_ = _sssl(si)
@@ -452,7 +454,7 @@ def ind_s_(
         >>> ind_s_(3, 1, 3)
         Out: (slice(None, None, None), 3, slice(None, None, None))
         >>> ind_s_(3, 1, np.s_[3:4])
-        Out: 
+        Out:
         (slice(None, None, None), slice(3, 4, None), slice(None, None, None))
     """
 
@@ -497,12 +499,12 @@ def inds_ss_(
                 [ 5,  6,  7,  8,  9],
                 [10, 11, 12, 13, 14],
                 [15, 16, 17, 18, 19]],
-        
+
                [[20, 21, 22, 23, 24],
                 [25, 26, 27, 28, 29],
                 [30, 31, 32, 33, 34],
                 [35, 36, 37, 38, 39]],
-        
+
                [[40, 41, 42, 43, 44],
                 [45, 46, 47, 48, 49],
                 [50, 51, 52, 53, 54],
@@ -512,7 +514,7 @@ def inds_ss_(
         array([[[22, 27, 32, 37],
                 [23, 28, 33, 38],
                 [24, 29, 34, 39]],
-        
+
                [[42, 47, 52, 57],
                 [43, 48, 53, 58],
                 [44, 49, 54, 59]]])
@@ -540,7 +542,7 @@ def inds_ss_(
 def iind_(inds):
     """
     ... rebuild extraction indices (n axes) ...
-    
+
     Examples:
         >>> ind = inds_ss_(3, 0, [3, 4, 5], -1, [2, 3, 4], fancy=False)
         >>> ind
@@ -574,7 +576,7 @@ def ind_inRange_(
         ):
     """
     ... boolen as y between y0 and y1 ...
-    
+
     kwArgs:
         side:
             0/'i'/'inner': exclude bounds
@@ -668,7 +670,7 @@ def rPeriod_(p_bounds, TeX_on=False):
     """
     ... return readable style of period from period bounds ...
 
-    Examples: 
+    Examples:
         >>> rPeriod_([1981, 2010])
         Out: '1981-2010'
         >>> rPeriod_([1981, 1981])
@@ -836,7 +838,7 @@ def ext_(s, sub=None):
 def find_patt_(p, s):
     """
     ... return s or list of items in s that match the given pattern ...
-    
+
     Examples:
         >>> find_patt_('(?<!\d)\d{3}(?!\d)', ['2333db', 'a233', 'ccb000r'])
         Out: ['a233', 'ccb000r']
@@ -1033,7 +1035,7 @@ def _m2s(month, seasons=('djf', 'mam', 'jja', 'son')):
         >>> m2s_([4, 5, 6, 11, 12])
         Out: array(['mam', 'mam', 'jja', 'son', 'djf'], dtype='<U3')
         >>> m2s_([4, 5, 6, 11, 12], seasons=['jja', 'so', 'ndjfmam'])
-        Out: 
+        Out:
         array(['ndjfmam', 'ndjfmam', 'jja', 'ndjfmam', 'ndjfmam'], dtype='<U7')
     """
     ssm = _month_season_numbers(seasons)
@@ -1105,7 +1107,7 @@ def rSUM1d_(
         >>> y = np.arange(6)
         >>> y = np.ma.masked_equal(y, 3)
         >>> y
-        Out[162]: 
+        Out[162]:
         masked_array(data=[0, 1, 2, --, 4, 5],
                      mask=[False, False, False,  True, False, False],
                fill_value=3)
@@ -1157,11 +1159,11 @@ def rSUM2d_(
               [False, False, False, False, False]],
         fill_value=3)
         >>> rSUM2d_(y, 3, 3)
-        Out: 
+        Out:
         array([[ 54.,  60.,  69.],
                [ 99., 108., 117.]])
         >>> rSUM2d_(y.data, 3, 3)
-        Out: 
+        Out:
         array([[ 54.,  63.,  72.],
                [ 99., 108., 117.]])
         >>> rSUM2d_(y.data, 3, 3, mode='full')
@@ -1173,7 +1175,7 @@ def rSUM2d_(
                [ 25.,  52.,  81.,  87.,  93.,  64.,  33.],
                [ 15.,  31.,  48.,  51.,  54.,  37.,  19.]])
         >>> rSUM2d_(y.data, 3, 3, mode='same')
-        Out: 
+        Out:
         array([[ 12.,  21.,  27.,  33.,  24.],
                [ 33.,  54.,  63.,  72.,  51.],
                [ 63.,  99., 108., 117.,  81.],
@@ -1205,12 +1207,12 @@ def rMEAN1d_(
         >>> y = np.arange(6)
         >>> y = np.ma.masked_equal(y, 3)
         >>> y
-        Out[162]: 
+        Out[162]:
         masked_array(data=[0, 1, 2, --, 4, 5],
                      mask=[False, False, False,  True, False, False],
                fill_value=3)
         >>> rMEAN1d_(y, 3)
-        Out[165]: 
+        Out[165]:
         masked_array(data=[1. , 1.5, 3. , 4.5],
                      mask=False,
                fill_value=1e+20)
@@ -1284,7 +1286,7 @@ def rMEAN2d_(
                [12.5, 13. , 13.5, 14.5, 15.5, 16. , 16.5],
                [15. , 15.5, 16. , 17. , 18. , 18.5, 19. ]])
         >>> rMEAN2d_(y.data, 3, 3, mode='same')
-        Out: 
+        Out:
         array([[ 3. ,  3.5,  4.5,  5.5,  6. ],
                [ 5.5,  6. ,  7. ,  8. ,  8.5],
                [10.5, 11. , 12. , 13. , 13.5],
@@ -1507,29 +1509,29 @@ def robust_bc2_(
 
     kwArgs:
         axes: axes in target shape correspongding to the given data
-          fw: when axes not specified, try mactching in the forward way or 
+          fw: when axes not specified, try mactching in the forward way or
               the backward way (default)
     Examples:
         >>> x = np.arange(6).reshape(2, 3)
         >>> robust_bc2_(x, (2, 2, 3))
-        Out: 
+        Out:
         array([[[0, 1, 2],
                 [3, 4, 5]],
-        
+
                [[0, 1, 2],
                 [3, 4, 5]]])
         >>> robust_bc2_(x, (2, 2, 3), axes=(0, -1))
-        Out: 
+        Out:
         array([[[0, 1, 2],
                 [0, 1, 2]],
-        
+
                [[3, 4, 5],
                 [3, 4, 5]]])
         >>> robust_bc2_(x, (2, 2, 3), fw=True)
-        Out: 
+        Out:
         array([[[0, 1, 2],
                 [0, 1, 2]],
-        
+
                [[3, 4, 5],
                 [3, 4, 5]]])
     """
@@ -1617,7 +1619,7 @@ def l_flp_(l):
 def dgt_(n):
     """
     ... digits of the int part of a number ...
-    
+
     Examples:
         >>> dgt_(143151)
         Out: 6
@@ -1879,11 +1881,11 @@ def flt_ndim_(xnd, dim0, ndim):
     Examples:
         >>> x = np.arange(24).reshape(2, 3, 4)
         >>> flt_ndim_(x, 1, 2)
-        Out: 
+        Out:
         array([[ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11],
                [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]])
         >>> flt_ndim_(x, 0, 2)
-        Out: 
+        Out:
         array([[ 0,  1,  2,  3],
                [ 4,  5,  6,  7],
                [ 8,  9, 10, 11],
@@ -1891,7 +1893,7 @@ def flt_ndim_(xnd, dim0, ndim):
                [16, 17, 18, 19],
                [20, 21, 22, 23]])
         >>> flt_ndim_(x, 0, 3)
-        Out: 
+        Out:
         array([ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11,
                12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23])
     """
@@ -1910,7 +1912,7 @@ def aggr_func_(
         ):
     """
     ... aggregate function over ndarray ...
-    
+
     Args:
           xnd: nd array
             V: corresponding to which the data are grouped
@@ -2122,3 +2124,40 @@ def sub_shp_(shp, n, dims=None, _r=True, amp=1.5, N=None):
          min(np.prod(shp), int(np.floor(N * amp) - 1)))
         ):
         return sub_shp_(shp, i+1, dims=dims, _r=_r, amp=None, N=N)
+
+
+def sqzUnit_(s):
+    import re
+    _isStarStyle = '**' in s
+    def _toKD(x):
+        D=re.findall(r'(?<=[a-zA-Z])((\*\*)?-?\d+)', x)
+        if D:
+            K=x.replace(D[0][0], '')
+            return (K, int(D[0][0].replace('**', '')))
+        elif re.findall(r'^[a-zA-Z]+', x):
+            return (x, 1)
+        else:
+            return (None, x)
+    def _frKD(x):
+        K, D = x
+        if K:
+            if D == 1:
+                return K
+            else:
+                return f"{K}**{D:g}" if _isStarStyle else f"{K}{D:g}"
+        else:
+            return D
+    S = []
+    tmp = []
+    _s = [_toKD(i) for i in s.split(' ')]
+    for i, ii in _s:
+        if i and i not in tmp:
+            DD = [jj for j, jj in _s if j == i]
+            if len(DD) > 1:
+                tmp.append(i)
+            DDD = sum(DD)
+            if DDD != 0:
+                S.append((i, DDD))
+        if i is None:
+            S.append((i, ii))
+    return ' '.join([_frKD(i) for i in S])
