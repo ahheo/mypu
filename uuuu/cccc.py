@@ -2405,7 +2405,6 @@ def myAuxTime_(
     return _iAuxC(dnum, units=_unit_, standard_name='time')
 
 
-<<<<<<< HEAD
 def date_mv_mon_(date, dmm):
     if 1 <= date.month + dmm <= 12:
         return date.replace(month=date.month+dmm)
