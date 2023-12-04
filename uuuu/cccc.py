@@ -1765,6 +1765,7 @@ def pSTAT_cube(
         stat='MEAN',
         valid_season=True,
         with_year=True,
+        list_out=False,
         **stat_opts):
     """
     ... period statistic ...
@@ -1895,7 +1896,7 @@ def pSTAT_cube(
     for ff in [i.split('-') if '-' in i else i for i in freqs]:
         tmp = _xxx(c0.copy(), ff)
         o += (tmp,)
-    return o[0] if len(o) == 1 else o
+    return o[0] if len(o) == 1 and not list_out else o
 
 
 def repair_cs_(c0):
@@ -2429,7 +2430,10 @@ def div_cube(uc, vc):
     else:
         emsg = "check the units in xycoords. We accept 'meters' or 'degrees'!"
         raise(emsg)
-    return du + dv
+    o = uc.copy(du + dv)
+    o.rename('divergence')
+    o.units = sqzUnit_(f"{uc.units.origin} m**-1")
+    return o
 
 
 def curl_cube(uc, vc):
@@ -2463,7 +2467,10 @@ def curl_cube(uc, vc):
     else:
         emsg = "check the units in xycoords. We accept 'meters' or 'degrees'!"
         raise(emsg)
-    return dv - du
+    o = uc.copy(dv - du)
+    o.rename('curl')
+    o.units = sqzUnit_(f"{uc.units.origin} m**-1")
+    return o
 
 
 def smth_cube(c, m=9, n=9):

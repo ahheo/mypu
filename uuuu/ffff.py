@@ -67,6 +67,7 @@
 * schF_keys_            : find files by key words
 * shp_drop_             : drop dims specified (and replace if desired)
 * slctStrL_             : select string list include or exclude substr(s)
+* sqzUnit_              : squeeze unit
 * ss_fr_sl_             : subgroups that without intersections
 * sub_shp_              : subgroup a shape
 * timerMain_            : decorator for executable function
@@ -157,6 +158,7 @@ __all__ = ['aggr_func_',
            'schF_keys_',
            'shp_drop_',
            'slctStrL_',
+           'sqzUnit_',
            'ss_fr_sl_',
            'sub_shp_',
            'timerMain_',
@@ -2122,3 +2124,40 @@ def sub_shp_(shp, n, dims=None, _r=True, amp=1.5, N=None):
          min(np.prod(shp), int(np.floor(N * amp) - 1)))
         ):
         return sub_shp_(shp, i+1, dims=dims, _r=_r, amp=None, N=N)
+
+
+def sqzUnit_(s):
+    import re
+    _isStarStyle = '**' in s
+    def _toKD(x):
+        D=re.findall(r'(?<=[a-zA-Z])((\*\*)?-?\d+)', x)
+        if D:
+            K=x.replace(D[0][0], '')
+            return (K, int(D[0][0].replace('**', '')))
+        elif re.findall(r'^[a-zA-Z]+', x):
+            return (x, 1)
+        else:
+            return (None, x)
+    def _frKD(x):
+        K, D = x
+        if K:
+            if D == 1:
+                return K
+            else:
+                return f"{K}**{D:g}" if _isStarStyle else f"{K}{D:g}"
+        else:
+            return D
+    S = []
+    tmp = []
+    _s = [_toKD(i) for i in s.split(' ')]
+    for i, ii in _s:
+        if i and i not in tmp:
+            DD = [jj for j, jj in _s if j == i]
+            if len(DD) > 1:
+                tmp.append(i)
+            DDD = sum(DD)
+            if DDD != 0:
+                S.append((i, DDD))
+        if i is None:
+            S.append((i, ii))
+    return ' '.join([_frKD(i) for i in S])
