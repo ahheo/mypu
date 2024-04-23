@@ -10,10 +10,12 @@
 * dgt_                  : digits of the int part of a number
 * el_join_              : element-wise join
 * ext_                  : get extension of file name
+* extract_              : extraction with help of inds_ss_
 * find_patt_            : extract list from items matching pattern
 * flt_                  : flatten (out: generator)          --> flt_l
 * flt_ndim_             : flatten number of consecutive dims
 * flt_l                 : flatten (out: list)               --> (o)uniqL_
+* half_grid_            : points between grids
 * haversine_            : distance between geo points in radians
 * iind_                 : rebuild extraction indices (n axes)
 * indFront_             : move element with specified index to front
@@ -22,7 +24,7 @@
 * ind_shape_i_          : slice indices                     --> slice_back_
 * ind_sm_               : if ind leading to sharing memory
 * ind_win_              : indices of a window in cylinder axis
-* inds_ss_              : extraction indices (n axes)
+* inds_ss_              : extraction indices (n axes)       --> extract_
 * intsect_              : intersection of lists
 * is1dIter_             : if 1d Iterable
 * isGI_                 : if Iterator
@@ -102,10 +104,12 @@ __all__ = ['aggr_func_',
            'dgt_',
            'el_join_',
            'ext_',
+           'extract_',
            'find_patt_',
            'flt_',
            'flt_ndim_',
            'flt_l',
+           'half_grid_',
            'haversine_',
            'iind_',
            'indFront_',
@@ -257,9 +261,9 @@ def nli_(l):
     ... like flt_l(), but work with only type List               ...
 
     Examples:
-        >>> x = [1, 2, (3, 4), [5, 6, [7, 8], (9, 10)]]
+        >>> x = [1, 2, (3, 4), [5, [6, 7], (8, [9, 10])]]
         >>> nli_(x)
-        Out: [1, 2, (3, 4), 5, 6, 7, 8, (9, 10)]
+        Out: [1, 2, (3, 4), 5, 6, 7, (8, [9, 10])]
     """
     return list(_not_list_iter(l))
 
@@ -564,6 +568,42 @@ def iind_(inds):
         for ii, i in zip(x, z):
             inds_[ii] = i
         return tuple(inds_)
+
+
+def extract_(xnd, axis, sl_i, *vArg):
+    """
+    ... extract ARRAY by providing selection along axis/axes ...
+
+    Args:
+         xnd: parent ARRAY
+        axis: along which for the extraction; axis name acceptable
+        sl_i: slice, list, or 1d array of selected indices along axis
+        vArg: any pairs of (axis, sl_i)
+
+    useful info:
+        >>> help(inds_ss_)
+    """
+
+    if len(vArg)%2 != 0:
+        raise Exception("arguments {!r} not interpretable!".format(vArg))
+
+    if len(vArg) > 0:
+        ax, sl = list(vArg[::2]), list(vArg[1::2])
+        ax.insert(0, axis)
+        sl.insert(0, sl_i)
+    else:
+        ax = [axis]
+        sl = [sl_i]
+
+    nArg = [(i, j) for i, j in zip(ax, sl)]
+    nArg = tuple(j for i in nArg for j in i)
+    if (hasattr(xnd, '__orthogonal_indexing__') and
+        xnd.__orthogonal_indexing__):
+        inds = inds_ss_(xnd.ndim, *nArg, fancy=False)
+    else:
+        inds = inds_ss_(xnd.ndim, *nArg, fancy=True)
+
+    return xnd[inds]
 
 
 def ind_inRange_(
@@ -2161,3 +2201,87 @@ def sqzUnit_(s):
         if i is None:
             S.append((i, ii))
     return ' '.join([_frKD(i) for i in S])
+
+
+def half_grid_(x, side='i', axis=-1, loa=None, rb=360):
+    """
+    ... points between grids ...
+
+    Args:
+        x: nd array
+    kwArgs:
+        side: extraploate for
+              0, 'i', 'inner': off;
+             -1, 'l',  'left': left;
+              1, 'r', 'right': right;
+              2, 'b',  'both': both
+        axis: along which axis
+         loa:
+             None: values of x as ordinary ones; default
+               lo: longitude
+               la: latitude
+          rb: right bound for longitude values (default 360)
+
+    Examples:
+        >>>x = np.arange(6).reshape(2, -1)
+        >>>half_grid_(x)
+        Out: 
+        array([[0.5, 1.5],
+               [3.5, 4.5]])
+        >>>half_grid_(x, side='l')
+        Out: 
+        array([[-0.5,  0.5,  1.5],
+               [ 2.5,  3.5,  4.5]])
+        >>>half_grid_(x, side='r')
+        Out: 
+        array([[0.5, 1.5, 2.5],
+               [3.5, 4.5, 5.5]])
+        >>>half_grid_(x, side='b')
+        Out: 
+        array([[-0.5,  0.5,  1.5,  2.5],
+               [ 2.5,  3.5,  4.5,  5.5]])
+        >>>half_grid_(half_grid_(x, side='i'), side='i', axis=0)
+        Out: array([[2., 3.]])
+        >>>half_grid_(half_grid_(x, side='b'), side='b', axis=0)
+        Out: 
+        array([[-2., -1.,  0.,  1.],
+               [ 1.,  2.,  3.,  4.],
+               [ 4.,  5.,  6.,  7.]])
+        >>>half_grid_(uu.half_grid_(x, side='b'), side='b', axis=0, loa='lo')
+        Out: 
+        array([[358., 359.,   0.,   1.],
+               [  1.,   2.,   3.,   4.],
+               [  4.,   5.,   6.,   7.]])
+    """
+    dx = np.diff(x, axis=axis)
+    if loa == 'lo':
+        lb = rb - 360
+        dx = rpt_(dx, 180, -180)
+    tmp = extract_(x, axis, np.s_[:-1]) + dx * .5
+    if side in (0, 'i', 'inner'):
+        o = tmp
+    elif side in (-1, 'l', 'left'):
+        o = np.concatenate((extract_(x, axis, np.s_[:1]) -
+                            extract_(dx, axis, np.s_[:1]) * .5,
+                            tmp),
+                           axis=axis)
+    elif side in (1, 'r', 'right'):
+        o = np.concatenate((tmp,
+                            extract_(x, axis, np.s_[-1:]) +
+                            extract_(dx, axis, np.s_[-1:]) * .5),
+                           axis=axis)
+    elif side in (2, 'b', 'both'):
+        o = np.concatenate((extract_(x, axis, np.s_[:1]) -
+                            extract_(dx, axis, np.s_[:1]) * .5,
+                            tmp,
+                            extract_(x, axis, np.s_[-1:]) +
+                            extract_(dx, axis, np.s_[-1:]) * .5),
+                           axis=axis)
+    else:
+        raise ValueError("unknow value of side!")
+    if loa == 'lo':
+        o = rpt_(o, rb, lb)
+    if loa == 'la':
+        o = np.where(o > 90, 90, o)
+        o = np.where(o < -90, -90, o)
+    return o

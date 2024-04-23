@@ -23,7 +23,7 @@
 * en_mxn_               : ensemble spread
 * en_mm_cubeL_          : make ensemble cube for multimodels
 * en_rip_               : ensemble (rxixpx) cube
-* extract_byAxes_       : extraction with help of inds_ss_
+* extract_byAxes_       : extraction with help of inds_ss_ (for cube)
 * extract_month_cube    : extraction cube of month
 * extract_period_cube   : extraction cube within [y0, y1]
 * extract_season_cube   : extraction cube of season
@@ -39,7 +39,6 @@
 * get_xy_dim_           : horizontal spatial dim coords
 * get_xyd_cube          : cube axes of xy dims
 * guessBnds_cube        : bounds of dims points
-* half_grid_            : points between grids
 * initAnnualCube_       : initiate annual cube
 * inpolygons_cube       : points if inside polygons
 * intersection_         : cube intersection with lon/lat range
@@ -92,7 +91,6 @@
             E-mail: changgui.lin@smhi.se
       Date created: 06.09.2019
 Date last modified: 11.11.2020
-           comment: add function half_grid_, move remaping functions to rgd.py
 """
 
 import iris
@@ -149,7 +147,6 @@ __all__ = ['alng_axis_',
            'get_xy_dim_',
            'get_xyd_cube',
            'guessBnds_cube',
-           'half_grid_',
            'initAnnualCube_',
            'inpolygons_cube',
            'intersection_',
@@ -264,15 +261,7 @@ def extract_byAxes_(cnd, axis, sl_i, *vArg):
         ax = [cnd.coord_dims(i)[0] if isinstance(i, (str, _iDimC)) else i
               for i in ax]
 
-    nArg = [(i, j) for i, j in zip(ax, sl)]
-    nArg = tuple(j for i in nArg for j in i)
-    if (hasattr(cnd, '__orthogonal_indexing__') and
-        cnd.__orthogonal_indexing__):
-        inds = inds_ss_(cnd.ndim, *nArg, fancy=False)
-    else:
-        inds = inds_ss_(cnd.ndim, *nArg, fancy=True)
-
-    return cnd[inds]
+    return extract_(cnd, *(i for ii in zip(ax, sl) for i in ii))
 
 
 def isMyIter_(x):
@@ -341,7 +330,7 @@ def nTslice_cube(c, n):
     ... slices along a no-time axis ...
 
     Args:
-        c: CUBE or iterable CUBEs
+        c: CUBE
         n: maximum size of a slice
     """
     nd = c.ndim
@@ -2002,44 +1991,6 @@ def cubesv_(c, filename,
         for i, ii in enumerate(c):
             ext = ext_(filename)
             cubesv_(ii, filename.replace(ext, '_{}{}'.format(i, ext)))
-
-
-def half_grid_(x, side='i', axis=-1, loa=None, rb=360):
-    """
-    ... points between grids ...
-    """
-    dx = np.diff(x, axis=axis)
-    if loa == 'lo':
-        lb = rb - 360
-        dx = rpt_(dx, 180, -180)
-    tmp = extract_byAxes_(x, axis, np.s_[:-1]) + dx * .5
-    if side in (0, 'i', 'inner'):
-        o = tmp
-    elif side in (-1, 'l', 'left'):
-        o = np.concatenate((extract_byAxes_(x, axis, np.s_[:1]) -
-                            extract_byAxes_(dx, axis, np.s_[:1]) * .5,
-                            tmp),
-                           axis=axis)
-    elif side in (1, 'r', 'right'):
-        o = np.concatenate((tmp,
-                            extract_byAxes_(x, axis, np.s_[-1:]) +
-                            extract_byAxes_(dx, axis, np.s_[-1:]) * .5),
-                           axis=axis)
-    elif side in (2, 'b', 'both'):
-        o = np.concatenate((extract_byAxes_(x, axis, np.s_[:1]) -
-                            extract_byAxes_(dx, axis, np.s_[:1]) * .5,
-                            tmp,
-                            extract_byAxes_(x, axis, np.s_[-1:]) +
-                            extract_byAxes_(dx, axis, np.s_[-1:]) * .5),
-                           axis=axis)
-    else:
-        raise ValueError("unknow value of side!")
-    if loa == 'lo':
-        o = rpt_(o, rb, lb)
-    if loa == 'la':
-        o = np.where(o > 90, 90, o)
-        o = np.where(o < -90, -90, o)
-    return o
 
 
 def _ri1d(c1d, v):
