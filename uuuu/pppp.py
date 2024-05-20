@@ -1,7 +1,8 @@
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-import iris
+from iris.cube import Cube as _Cube
+import iris.coord_systems as _ics
 import iris.plot as iplt
 import cartopy.crs as ccrs
 import os
@@ -9,38 +10,49 @@ import warnings
 
 from .ffff import nanMask_, kde__, flt_, flt_l, isIter_, rpt_, ind_inRange_
 from .cccc import y0y1_of_cube, extract_period_cube
+from .xxxx import loa_
 
 
-__all__ = ['aligned_cb_',
-           'aligned_tx_',
-           'annotate_heatmap',
-           'axColor_',
-           'axVisibleOff_',
-           'ax_move_',
-           'axs_abc_',
-           'axs_move_',
-           'axs_rct_',
-           'axs_shrink_',
-           'bp_cubeL_eval_',
-           'bp_dataLL0_',
-           'bp_dataLL1_',
-           'bp_dataLL_',
-           'cdf_iANDe_',
-           'distri_swe_',
-           'get_1st_patchCollection_',
-           'geoTkLbl_',
-           'hatch_cube',
-           'heatmap',
-           'hspace_ax_',
-           'init_fig_',
-           'imp_',
-           'imp_eur_',
-           'imp_ll_',
-           'imp_swe_',
-           'pdf_iANDe_',
-           'pstGeoAx_',
-           'ts_eCube_',
-           'wspace_ax_']
+__all__ = [
+        #----------------------------------------------------------------------- general
+        'init_fig_',
+        'aligned_cb_',
+        'aligned_tx_',
+        'annotate_heatmap',
+        'heatmap',
+        'axColor_',
+        'axVisibleOff_',
+        'ax_move_',
+        'axs_abc_',
+        'axs_move_',
+        'axs_rct_',
+        'axs_shrink_',
+        'hspace_ax_',
+        'wspace_ax_',
+        'get_1st_mappable_obj_',
+        'get_1st_patchCollection_',
+        'geoTkLbl_',
+        'pstGeoAx_',
+        #----------------------------------------------------------------------- pd
+        'distri_swe_',
+        #----------------------------------------------------------------------- cube
+        'bp_cubeL_eval_',
+        'bp_dataLL0_',
+        'bp_dataLL1_',
+        'bp_dataLL_',
+        'cdf_iANDe_',
+        'hatch_cube',
+        'imp_',
+        'imp_eur_',
+        'imp_ll_',
+        'imp_swe_',
+        'pdf_iANDe_',
+        'ts_eCube_',
+        #----------------------------------------------------------------------- xarray
+        'da_map_',
+        'das_map_',
+        'uv_map_',
+        ]
 
 
 def init_fig_(
@@ -80,15 +92,15 @@ def axColor_(ax, color):
 
 def _get_clo(cube):
     cs = cube.coord_system()
-    if isinstance(cs, (iris.coord_systems.LambertConformal,
-                       iris.coord_systems.Stereographic)):
+    if isinstance(cs, (_ics.LambertConformal,
+                       _ics.Stereographic)):
         clo = cs.central_lon
-    elif isinstance(cs, iris.coord_systems.RotatedGeogCS):
+    elif isinstance(cs, _ics.RotatedGeogCS):
         clo = rpt_(180 + cs.grid_north_pole_longitude, 180, -180)
-    elif isinstance(cs, (iris.coord_systems.Orthographic,
-                         iris.coord_systems.VerticalPerspective)):
+    elif isinstance(cs, (_ics.Orthographic,
+                         _ics.VerticalPerspective)):
         clo = cs.longitude_of_projection_origin
-    elif isinstance(cs, iris.coord_systems.TransverseMercator):
+    elif isinstance(cs, _ics.TransverseMercator):
         clo = cs.longitude_of_central_meridian
     else:
         clo = np.floor(np.mean(cube.coord('longitude').points) / 5) * 5
@@ -304,10 +316,10 @@ def _mapext(rg={}, cube=None):
         return flt_l([o['longitude'], o['latitude']])
 
 
-def hatch_cube(cube, **kwArgs):
-    kwArgs.setdefault('zorder', 5)
-    kwArgs.setdefault('colors', 'none')
-    return _ll_cube(cube, func='contourf', **kwArgs)
+def hatch_cube(cube, **kwargs):
+    kwargs.setdefault('zorder', 5)
+    kwargs.setdefault('colors', 'none')
+    return _ll_cube(cube, func='contourf', **kwargs)
 
 
 def _ll_cube2(
@@ -316,7 +328,7 @@ def _ll_cube2(
         axes=None,
         func='quiver',
         sc=1,
-        **kwArgs,
+        **kwargs,
         ):
     axes = plt.gca() if axes is None else axes
     support = ['quiver', 'barbs', 'streamplot']
@@ -326,7 +338,7 @@ def _ll_cube2(
     if lo0.ndim == 2:
         o = _func(lo0.points, la0.points, cube0.data*sc, cube1.data*sc,
                   transform=ccrs.PlateCarree(),
-                  **kwArgs)
+                  **kwargs)
     else:
         if cube0.coord_dims(lo0)[0] > cube0.coord_dims(la0)[0]:
             x, y = np.meshgrid(lo0.points, la0.points)
@@ -334,7 +346,7 @@ def _ll_cube2(
             y, x = np.meshgrid(la0.points, lo0.points)
         o = _func(x, y, cube0.data*sc, cube1.data*sc,
                   transform=ccrs.PlateCarree(),
-                  **kwArgs)
+                  **kwargs)
     return o
 
 
@@ -343,19 +355,19 @@ def _ll_cube(
         axes=None,
         func='pcolormesh',
         sc=1,
-        **kwArgs,
+        **kwargs,
         ):
     axes = plt.gca() if axes is None else axes
     support = ['pcolor', 'pcolormesh', 'contour', 'contourf']
     assert func in support, f"func {func!r} not supported!"
     if func in support[-2:]:
         _func = getattr(iplt, func)
-        o = _func(cube.copy(cube.data*sc), axes=axes, **kwArgs)
+        o = _func(cube.copy(cube.data*sc), axes=axes, **kwargs)
     else:
         lo0, la0 = cube.coord('longitude'), cube.coord('latitude')
         if lo0.ndim == 1:
             _func = getattr(iplt, func)
-            o = _func(cube.copy(cube.data*sc), axes=axes, **kwArgs)
+            o = _func(cube.copy(cube.data*sc), axes=axes, **kwargs)
         else:
             if hasattr(lo0, 'has_bounds') and lo0.has_bounds():
                 x, y = lo0.contiguous_bounds(), la0.contiguous_bounds()
@@ -364,7 +376,7 @@ def _ll_cube(
             _func = getattr(axes, func)
             o = _func(x, y, cube.data*sc,
                       transform=ccrs.PlateCarree(),
-                      **kwArgs)
+                      **kwargs)
     return o
 
 
@@ -443,34 +455,35 @@ def axs_shrink_(
 
 def _minmaxXYlm(ax):
     if isIter_(ax):
-        xmin = min([i.get_position().x0 for i in flt_(ax)])
-        ymin = min([i.get_position().y0 for i in flt_(ax)])
-        xmax = max([i.get_position().x1 for i in flt_(ax)])
-        ymax = max([i.get_position().y1 for i in flt_(ax)])
+        x0 = min([i.get_position().x0 for i in flt_(ax)])
+        y0 = min([i.get_position().y0 for i in flt_(ax)])
+        x1 = max([i.get_position().x1 for i in flt_(ax)])
+        y1 = max([i.get_position().y1 for i in flt_(ax)])
     else:
-        xmin, ymin = ax.get_position().p0
-        xmax, ymax = ax.get_position().p1
-    return (xmin, xmax, ymin, ymax)
+        x0, y0 = ax.get_position().p0
+        x1, y1 = ax.get_position().p1
+    return (x0, x1, y0, y1)
 
 
 def axs_rct_(
-        fig,
         ax,
         dx=.005,
-        **kwArgs,
+        dy=None,
+        **kwargs,
         ):
-    xmin, xmax, ymin, ymax = _minmaxXYlm(ax)
+    fig = _fig_ax(ax)
+    x0, x1, y0, y1 = _minmaxXYlm(ax)
     kD = dict(fill=False, color='k', zorder=1000,
               transform=fig.transFigure, figure=fig)
-    kD.update(kwArgs)
+    kD.update(kwargs)
     fx, fy = fig.get_size_inches()
-    dy = dx * fx / fy
+    dy = dx * fx / fy if dy is None else dy
     fig.patches.extend(
         [plt.Rectangle(
-            (xmin - dx, ymin -dy),
-            xmax - xmin + 2*dx,
-            ymax - ymin + 2*dy,
-            **kDi
+            (x0 - dx, y0 -dy),
+            x1 - x0 + 2*dx,
+            y1 - y0 + 2*dy,
+            **kD,
             )])
 
 
@@ -482,52 +495,79 @@ def hspace_ax_(ax0, ax1):
     return ax0.get_position().y0 - ax1.get_position().y1
 
 
+def get_1st_mappable_obj_(ax):
+    for i in ax.children():
+        if hasattr(i, 'get_cmap'):
+            return i
+
+
+def _guess_cbiw(ax, lrbt='r'):
+    apo = ax.get_position()
+    _aD = dict(l=apo.x0, r=1-apo.x1, b=apo.y0, t=1-apo.y1)
+    return (_aD[lrbt]/4, _aD[lrbt]/3)
+
+
+def _fig_ax(ax):
+    if isinstance(ax, (mpl.axes.Axes, )):
+        return ax.figure
+    elif isIter_(ax):
+        for i in flt_(ax):
+            return _fig_ax(i)
+    else:
+        emsg = "failed to get Parent figure"
+        raise TypeError(emsg)
+
+
 def aligned_cb_(
-        fig,
-        ax,
-        ppp,
-        iw,
+        ax=None,
+        ppp=None,
+        iw=None,
         orientation='vertical',
         shrink=1.,
-        side=1,
+        side=True,
         ncx='c',
         ti=None,
-        **cb_dict,
+        **kwargs,
         ):
-    cD = dict(orientation=orientation, **cb_dict)
-    xmin, xmax, ymin, ymax = _minmaxXYlm(ax)
+    ax = plt.gca() if ax is None else ax
+    fig = _fig_ax(ax)
+    ppp = get_1st_mappable_obj_(ax) if ppp is None else ppp
+    vh = 'lr' if orientation == 'vertical' else 'bt'
+    lrbt = vh[0] if side else vh[1]
+    _i, _w = _guess_cbiw(ax, lrbt) if iw is None else iw
+
+    cD = dict(orientation=orientation, **kwargs)
+    x0, x1, y0, y1 = _minmaxXYlm(ax)
     shrink_ = 0 if ncx == 'n' else (1 if ncx=='x' else .5)
-    if orientation == 'vertical':
-        if side:
-            caxb = [xmax + iw[0],
-                    ymin + (ymax - ymin) * (1. - shrink) * shrink_,
-                    iw[1],
-                    (ymax - ymin) * shrink]
-        else:
-            caxb = [xmin - iw[0] -iw[1],
-                    ymin + (ymax - ymin) * (1. - shrink) * shrink_,
-                    iw[1],
-                    (ymax - ymin) * shrink]
-    elif orientation == 'horizontal':
-        if side:
-            caxb = [xmin + (xmax - xmin) * (1. - shrink) * shrink_,
-                    ymin - iw[0] - iw[1],
-                    (xmax - xmin) * shrink,
-                    iw[1]]
-        else:
-            caxb = [xmin + (xmax - xmin) * (1. - shrink) * shrink_,
-                    ymax + iw[1],
-                    (xmax - xmin) * shrink,
-                    iw[1]]
+
+    if lrbt == 'r':
+        caxb = [x1 + _i,
+                y0 + (y1 - y0) * (1. - shrink) * shrink_,
+                _w,
+                (y1 - y0) * shrink]
+    elif lrbt == 'l':
+        caxb = [x0 - _i -_w,
+                y0 + (y1 - y0) * (1. - shrink) * shrink_,
+                _w,
+                (y1 - y0) * shrink]
+    elif lrbt == 'b':
+        caxb = [x0 + (x1 - x0) * (1. - shrink) * shrink_,
+                y0 - _i - _w,
+                (x1 - x0) * shrink,
+                _w]
+    elif lrbt == 't':
+        caxb = [x0 + (x1 - x0) * (1. - shrink) * shrink_,
+                y1 + _w,
+                (x1 - x0) * shrink,
+                _w]
     cax = fig.add_axes(caxb)
     cb = plt.colorbar(ppp, cax, **cD)
-    if not side:
-        if orientation == 'vertical':
-            cax.yaxis.tick_left()
-            cax.yaxis.set_label_position('left')
-        if orientation == 'horizontal':
-            cax.xaxis.tick_top()
-            cax.xaxis.set_label_position('top')
+    if lrbt == 'l':
+        cax.yaxis.tick_left()
+        cax.yaxis.set_label_position('left')
+    elif lrbt == 't':
+        cax.xaxis.tick_top()
+        cax.xaxis.set_label_position('top')
     if ti:
         cb.set_label(ti)
     return cb
@@ -541,10 +581,10 @@ def aligned_qk_(
         pad=.02,
         rPos='NE',
         coordinates='figure',
-        **kwArgs,
+        **kwargs,
         ):
     # _get_xy():
-    xmin, xmax, ymin, ymax = _minmaxXYlm(ax)
+    x0, x1, y0, y1 = _minmaxXYlm(ax)
     if isIter_(pad) and len(pad) == 2:
         padx, pady = pad
     elif not isIter_(pad):
@@ -552,110 +592,116 @@ def aligned_qk_(
     else:
         raise("'pad' should be scalar (padx=pady) or arraylike (padx, pady)!")
     if 'N' in rPos:
-        y = ymax + pady
+        y = y1 + pady
     elif 'n' in rPos:
-        y = ymax - pady
+        y = y1 - pady
     elif 'S' in rPos:
-        y = ymin - pady
+        y = y0 - pady
     elif 's' in rPos:
-        y = ymin + pady
+        y = y0 + pady
     else:
-        y = (ymin + ymax) * .5
+        y = (y0 + y1) * .5
     if 'E' in rPos:
-        x = xmax + padx
+        x = x1 + padx
     elif 'e' in rPos:
-        x = xmax - padx
+        x = x1 - padx
     elif 'W' in rPos:
-        x = xmin - padx
+        x = x0 - padx
     elif 'w' in rPos:
-        x = xmin + padx
+        x = x0 + padx
     else:
-        x = (xmin + xmax) * .5
+        x = (x0 + x1) * .5
     #print(f"padx:{padx}; pady:{pady}")
-    #print(f"xmin:{xmin}; xmax:{xmax}; ymin:{ymin}; ymax:{ymax};")
+    #print(f"x0:{x0}; x1:{x1}; y0:{y0}; y1:{y1};")
     #print(f"x:{x}, y:{y}")
     qk = plt.quiverkey(
             q, x, y, U, s,
             coordinates=coordinates,
-            **kwArgs
+            **kwargs
             )
     return qk
 
+
 def axs_abc_(
-        fig,
         ax,
         s='(a)',
-        dx=.005,
-        dy=.005,
+        dx=.001,
+        dy=None,
         fontdict=dict(fontweight='bold'),
-        **kwArgs,
+        **kwargs,
         ):
-    xmin, _, _, ymax = _minmaxXYlm(ax)
-    kD = dict(ha='right') if dx > 0 else dict(ha='left')
-    kD.update(kwArgs)
-    fig.text(xmin - dx, ymax + dy, s, fontdict=fontdict, **kD)
-
+    fig = _fig_ax(ax)
+    fra = fig.get_figwidth() / fig.get_figheight()
+    dy = abs(dx * fra) if dy is None else dx
+    x0, _, _, y1 = _minmaxXYlm(ax)
+    kD = dict(ha='left') if dx >= 0 else dict(ha='right')
+    kD = dict(va='bottom') if dy >= 0 else dict(ha='top')
+    kD.update(kwargs)
+    fig.text(x0 + dx, y1 + dy, s, fontdict=fontdict, **kD)
 
 
 def aligned_tx_(
-        fig,
-        ax,
-        s,
+        ax=None,
+        s='',
         rpo='tl',
         itv=0.005,
         fontdict=None,
-        **kwArgs,
+        **kwargs,
         ):
-    xmin, xmax, ymin, ymax = _minmaxXYlm(ax)
+
+    ax = plt.gca() if ax is None else ax
+    fig = _fig_ax(ax)
+    x0, x1, y0, y1 = _minmaxXYlm(ax)
+
     if rpo[0].upper() in 'TB':
-        xlm = [xmin, xmax]
+        xlm = [x0, x1]
     elif rpo[0].upper() in 'LR':
-        xlm = [ymin, ymax]
+        xlm = [y0, y1]
     else:
         raise Exception('uninterpretable rpo!')
 
     if rpo[0].upper() == 'T':
-        y = ymax + itv
+        y = y1 + itv
         if itv >= 0:
-            kwArgs.update({'verticalalignment': 'bottom'})
+            kwargs.update({'va': 'bottom'})
         else:
-            kwArgs.update({'verticalalignment': 'top'})
+            kwargs.update({'va': 'top'})
     elif rpo[0].upper() == 'B':
-        y = ymin - itv
+        y = y0 - itv
         if itv >= 0:
-            kwArgs.update({'verticalalignment': 'top'})
+            kwargs.update({'va': 'top'})
         else:
-            kwArgs.update({'verticalalignment': 'bottom'})
+            kwargs.update({'va': 'bottom'})
     elif rpo[0].upper() == 'R':
-        y = xmax + itv
+        y = x1 + itv
         if itv >= 0:
-            kwArgs.update({'verticalalignment': 'top'})
+            kwargs.update({'va': 'top'})
         else:
-            kwArgs.update({'verticalalignment': 'bottom'})
+            kwargs.update({'va': 'bottom'})
     elif rpo[0].upper() == 'L':
-        y = xmin - itv
+        y = x0 - itv
         if itv >= 0:
-            kwArgs.update({'verticalalignment': 'bottom'})
+            kwargs.update({'va': 'bottom'})
         else:
-            kwArgs.update({'verticalalignment': 'top'})
+            kwargs.update({'va': 'top'})
 
     if rpo[1].upper() == 'L':
         x = xlm[0] + abs(itv)
-        kwArgs.update({'horizontalalignment': 'left'})
+        kwargs.update({'ha': 'left'})
     elif rpo[1].upper() == 'C':
         x = np.mean(xlm)
-        kwArgs.update({'horizontalalignment': 'center'})
+        kwargs.update({'ha': 'center'})
     elif rpo[1].upper() == 'R':
         x = xlm[1] - abs(itv)
-        kwArgs.update({'horizontalalignment': 'right'})
+        kwargs.update({'ha': 'right'})
     else:
         raise Exception('uninterpretable rpo!')
 
     if rpo[0].upper() in 'LR':
        x, y = y, x
-       kwArgs.update({'rotation': 'vertical', 'rotation_mode': 'anchor'})
+       kwargs.update({'rotation': 'vertical', 'rotation_mode': 'anchor'})
 
-    tx = fig.text(x, y, s, fontdict=fontdict, **kwArgs)
+    tx = fig.text(x, y, s, fontdict=fontdict, **kwargs)
     return tx
 
 
@@ -717,7 +763,7 @@ def ts_eCube_(ax, eCube, color):
     y0y1 = y0y1_of_cube(eCube)
     cl = []
     ils = []
-    if isinstance(eCube, iris.cube.Cube):
+    if isinstance(eCube, _Cube):
         if 'realization' in (i.name() for i in eCube.coords()):
             cubes = eCube.slices_over('realization')
             #ax_r = eCube.coord_dims('realization')[0]
@@ -968,41 +1014,34 @@ def bp_cubeL_eval_(ax, cubeL):
 
 
 def distri_swe_(
-        fig,
-        nrow,
-        ncol,
-        n,
         df,
-        pcho={},
-        ti=None,
-        **kwArgs,
+        *subplotspec,
+        fig=None,
+        pK_={},
+        **kwargs,
         ):
-    ax = fig.add_subplot(nrow, ncol, n)
-    df.plot(ax=ax, **kwArgs, **pcho)
+    fig = plt.gcf() if fig is None else fig
+    ax = fig.add_subplot(**subplotspec)
+    df.plot(ax=ax, **kwargs, **pK_)
     ax.set_axis_off()
-    if ti is not None:
-        ax.set_title(ti)
     return ax
 
 
 def get_1st_patchCollection_(ax):
-    pc_ = None
     for i in ax.get_children():
         if isinstance(i, mpl.collections.PatchCollection):
-             pc_ = i
-             break
-    return pc_
+            return i
 
 
 #def heatmap(data, row_labels, col_labels, ax=None,
-#            cbar_kw={}, cbarlabel="", **kwArgs):
+#            cbar_kw={}, cbarlabel="", **kwargs):
 def heatmap(
         data,
         row_labels,
         col_labels,
         ax=None,
         tkD=None,
-        **kwArgs,
+        **kwargs,
         ):
     """
     Create a heatmap from a numpy array and two lists of labels.
@@ -1030,7 +1069,7 @@ def heatmap(
         ax = plt.gca()
 
     # Plot the heatmap
-    im = ax.imshow(data, **kwArgs)
+    im = ax.imshow(data, **kwargs)
 
     # Create colorbar
     #cbar = ax.figure.colorbar(im, ax=ax, **cbar_kw)
@@ -1053,7 +1092,9 @@ def heatmap(
     #               labeltop=True, labelbottom=False)
 
     # Rotate the tick labels and set their alignment.
-    plt.setp(ax.get_xticklabels(), rotation=rot, ha="right",
+    plt.setp(ax.get_xticklabels(),
+             rotation=rot,
+             ha="right",
              rotation_mode="anchor")
 
     # Turn spines off and create white grid.
@@ -1115,8 +1156,8 @@ def annotate_heatmap(
 
     # Set default alignment to center, but allow it to be
     # overwritten by textkw.
-    kw = dict(horizontalalignment="center",
-              verticalalignment="center")
+    kw = dict(ha="center",
+              va="center")
     kw.update(textkw)
 
     # Get the formatter in case a string is supplied
@@ -1159,7 +1200,7 @@ def geoTkLbl_(ax):
             )
 
 
-def pstGeoAx_(ax, delta=(30, 20), coastline=True, **kwArgs):
+def pstGeoAx_(ax, delta=(30, 20), coastline=True, **kwargs):
     proj = ccrs.PlateCarree()
     if coastline:
         ax.coastlines(linewidth=0.2, color="darkgray")
@@ -1176,17 +1217,120 @@ def pstGeoAx_(ax, delta=(30, 20), coastline=True, **kwArgs):
             alpha=.5,
             )
     if delta:
+        if delta[0] < .5:
+            ix = .1
+        elif delta[0] < 1:
+            ix = .5
+        elif delta[0] < 5:
+            ix = 1
+        else:
+            ix = 5
+        if delta[1] < .5:
+            iy = .1
+        elif delta[1] < 1:
+            iy = .5
+        elif delta[1] < 5:
+            iy = 1
+        else:
+            iy = 5
         x0, x1, y0, y1 = ax.get_extent(crs=proj)
         if any(i > 180 for i in (x0, x1)):
-            _xtks = np.arange(0, 360, 5)
+            _xtks = np.arange(0, 360, ix)
         else:
-            _xtks = np.arange(-180, 180, 5)
+            _xtks = np.arange(-180, 180, ix)
         _xind = ind_inRange_(_xtks, x0, x1)
-        _ytks = np.arange(-90, 90, 5)
+        _ytks = np.arange(-90, 90, iy)
         _yind = ind_inRange_(_ytks, y0, y1)
         glD.update(dict(
             xlocs = [i for i in _xtks[_xind] if i%delta[0] == 0],
             ylocs = [i for i in _ytks[_yind] if i%delta[1] == 0],
             ))
-    glD.update(kwArgs)
+    glD.update(kwargs)
     gl = ax.gridlines(**glD)
+
+
+def da_map_(
+        da,
+        *subplotspec,
+        fig=None,
+        ext=None,
+        func='pcolormesh',
+        sc=1,
+        axK_={},
+        pK_={},
+        ):
+    x, y = loa_(da)
+    fig = plt.gcf() if fig is None else fig
+    ax = fig.add_subplot(*subplotspec, projection=ccrs.PlateCarree())
+    if ext:
+        ax.set_extent(ext, crs=ccrs.PlateCarree())
+    axK_.setdefault('frame_on', False)
+    ax.set(**axK_)
+    _func = getattr(ax, func)
+    o = _func(x, y, da.data*sc,
+              transform=ccrs.PlateCarree(),
+              **pK_)
+    return (ax, o)
+
+
+def das_map_(
+        das,
+        tis=None,
+        ax=None,
+        ext=None,
+        func='pcolormesh',
+        sc=1,
+        axK_={},
+        pK_={},
+        txtK_={},
+        out=False,
+        ):
+    ax = plt.gca() if ax is None else ax
+    tis = ('',)*len(das) if tis is None else tis
+    if ext:
+        ax.set_extent(ext, crs=ccrs.PlateCarree())
+    axK_.setdefault('frame_on', False)
+    ax.set(**axK_)
+    _func = getattr(ax, func)
+    if out:
+        o = []
+    for i, (da, ti, c) in enumerate(zip(das, tis, 'kwbrmyg')):
+        x, y = loa_(da)
+        o_ = _func(x, y, da.data*sc,
+                   transform=ccrs.PlateCarree(),
+                   **pK_)
+        if ti:
+            x0 = np.min(x)
+            y1 = np.max(y)
+            ax.text(x0, y1, ti, color=c, va='bottom', ha='left', **txtK_)
+        if out:
+            o.append(o_)
+        if i>0:
+            xx = [x[0, 0], x[0, -1], x[-1, -1], x[-1, 0], x[0, 0]]
+            yy = [y[0, 0], y[0, -1], y[-1, -1], y[-1, 0], y[0, 0]]
+            ax.plot(xx, yy, color=c, lw=.5)
+    if out:
+        return o
+
+
+def uv_map_(
+        uda,
+        vda,
+        ax=None,
+        ext=None,
+        sc_u=1,
+        sc_v=1,
+        axK_={},
+        pK_={},
+        ):
+    ax = plt.gca() if ax is None else ax
+    if ext:
+        ax.set_extent(ext, crs=ccrs.PlateCarree())
+    axK_.setdefault('frame_on', False)
+    ax.set(**axK_)
+    _func = getattr(ax, func)
+    x, y = loa_(uda)
+    o = _func(x, y, uda.data*sc_u, vda.data*sc_v,
+              transform=ccrs.PlateCarree(),
+              **pK_)
+    return o

@@ -11,7 +11,6 @@
 * cubesv_               : save cube to nc with dim_t unlimitted
 * curl_cube             : curl of (ucube, vcube)
 * cut_as_cube           : cut into the domain of another cube
-* date_mv_mon_          : date displace by months
 * dim_axis_cube         : dimension of a specified axis of cube
 * dimc_axis_cube        : dimcoord of a specified axis of cube
 * div_cube              : divergence of (ucube, vcube)
@@ -31,7 +30,6 @@
 * f_allD_cube           : iris analysis func over all dims of cube(L) (each)
 * getGridAL_cube        : grid_land_area
 * getGridA_cube         : grid_area from file or calc with basic assumption
-* get_dates_            : get datetime array from a brief string
 * get_gwl_y0_           : first year of 30-year window of global warming level
 * get_loa_              : longitude/latitude coords of cube
 * get_loa_dim_          : modified _get_lon_lat_coords from iris
@@ -66,7 +64,7 @@
 * pst_                  : post-rename/reunits cube(L)
 * purefy_cubeL_         : prepare for concat or merge
 * repair_cs_            : bug fix for save cube to nc
-* repair_lccs_          : bug fix for save cube to nc (LamgfortComfort)
+* repair_lccs_          : bug fix for save cube to nc (LambertConformal)
 * replace_coord_        : replace coord data according to coord.name()
 * rgCount_cube          : regional count
 * rgCount_poly_cube     : regional count over in polygon only
@@ -94,104 +92,102 @@ Date last modified: 11.11.2020
 """
 
 import iris
-from iris.cube import Cube as _Cube
-from iris.cube import CubeList as _CubeList
+from iris.cube import Cube as _Cube, CubeList as _CubeList
 import iris.coord_categorisation as _ica
-from iris.coords import AuxCoord as _iAuxC
-from iris.coords import DimCoord as _iDimC
+from iris.coords import AuxCoord as _iAuxC, DimCoord as _iDimC
 from iris.util import equalise_attributes
 
 import numpy as np
-import cf_units
 import warnings
 import re
 from datetime import datetime, timedelta
 
 from .ffff import *
+from .uuuu import *
 
 
-__all__ = ['alng_axis_',
-           'area_weights_',
-           'ax_fn_mp_',
-           'axT_cube',
-           'concat_cube_',
-           'corr_cube_',
-           'cubesv_',
-           'curl_cube',
-           'cut_as_cube',
-           'date_mv_mon_',
-           'dim_axis_cube',
-           'dimc_axis_cube',
-           'div_cube',
-           'doy_f_cube',
-           'en_iqr_',
-           'en_max_',
-           'en_mean_',
-           'en_min_',
-           'en_mxn_',
-           'en_mm_cubeL_',
-           'en_rip_',
-           'extract_byAxes_',
-           'extract_month_cube',
-           'extract_period_cube',
-           'extract_season_cube',
-           'extract_win_cube',
-           'f_allD_cube',
-           'getGridAL_cube',
-           'getGridA_cube',
-           'get_dates_',
-           'get_gwl_y0_',
-           'get_loa_',
-           'get_loa_dim_',
-           'get_loa_pts_2d_',
-           'get_xy_dim_',
-           'get_xyd_cube',
-           'guessBnds_cube',
-           'initAnnualCube_',
-           'inpolygons_cube',
-           'intersection_',
-           'isMyIter_',
-           'kde_cube',
-           'lccs_m2km_',
-           'maskLS_cube',
-           'maskNaN_cube',
-           'maskPOLY_cube',
-           'max_cube',
-           'max_cube_',
-           'merge_cube_',
-           'min_cube',
-           'min_cube_',
-           'minmax_cube',
-           'minmax_cube_',
-           'myAuxTime_',
-           'myDimTime_',
-           'nTslice_cube',
-           'nearest_point_cube',
-           'nine_points_cube',
-           'pSTAT_cube',
-           'pcorr_cube',
-           'pp_cube',
-           'pst_',
-           'purefy_cubeL_',
-           'repair_cs_',
-           'repair_lccs_',
-           'replace_coord_',
-           'rgCount_cube',
-           'rgCount_poly_cube',
-           'rgF_cube',
-           'rgF_poly_cube',
-           'rgMean_cube',
-           'rgMean_poly_cube',
-           'ri_cube',
-           'rm_sc_cube',
-           'rm_t_aux_cube',
-           'rm_yr_doy_cube',
-           'seasonyr_cube',
-           'slice_back_',
-           'smth_cube',
-           'unique_yrs_of_cube',
-           'y0y1_of_cube',
-           'yr_doy_cube']
+__all__ = [
+        'alng_axis_',
+        'area_weights_',
+        'ax_fn_mp_',
+        'axT_cube',
+        'concat_cube_',
+        'corr_cube_',
+        'cubesv_',
+        'curl_cube',
+        'cut_as_cube',
+        'dim_axis_cube',
+        'dimc_axis_cube',
+        'div_cube',
+        'doy_f_cube',
+        'en_iqr_',
+        'en_max_',
+        'en_mean_',
+        'en_min_',
+        'en_mxn_',
+        'en_mm_cubeL_',
+        'en_rip_',
+        'extract_byAxes_',
+        'extract_month_cube',
+        'extract_period_cube',
+        'extract_season_cube',
+        'extract_win_cube',
+        'f_allD_cube',
+        'getGridAL_cube',
+        'getGridA_cube',
+        'get_gwl_y0_',
+        'get_loa_',
+        'get_loa_dim_',
+        'get_loa_pts_2d_',
+        'get_xy_dim_',
+        'get_xyd_cube',
+        'guessBnds_cube',
+        'initAnnualCube_',
+        'inpolygons_cube',
+        'intersection_',
+        'isMyIter_',
+        'kde_cube',
+        'lccs_m2km_',
+        'maskLS_cube',
+        'maskNaN_cube',
+        'maskPOLY_cube',
+        'max_cube',
+        'max_cube_',
+        'merge_cube_',
+        'min_cube',
+        'min_cube_',
+        'minmax_cube',
+        'minmax_cube_',
+        'myAuxTime_',
+        'myDimTime_',
+        'nTslice_cube',
+        'nearest_point_cube',
+        'nine_points_cube',
+        'pSTAT_cube',
+        'pcorr_cube',
+        'pp_cube',
+        'pst_',
+        'purefy_cubeL_',
+        'repair_cs_',
+        'repair_lccs_',
+        'replace_coord_',
+        'rgCount_cube',
+        'rgCount_poly_cube',
+        'rgF_cube',
+        'rgF_poly_cube',
+        'rgMean_cube',
+        'rgMean_poly_cube',
+        'ri_cube',
+        'rm_sc_cube',
+        'rm_t_aux_cube',
+        'rm_yr_doy_cube',
+        'seasonyr_cube',
+        'slice_back_',
+        'smth_cube',
+        'unique_yrs_of_cube',
+        'y0y1_of_cube',
+        'yr_doy_cube',
+        ]
 
 
 def slice_back_(cnd, c1d, ii, axis):
@@ -334,7 +330,8 @@ def nTslice_cube(c, n):
         n: maximum size of a slice
     """
     nd = c.ndim
-    ax_nT = [i for i in range(nd) if i not in c.coord_dims('time')]
+    tc = dimc_axis_cube(c, 'T')
+    ax_nT = [i for i in range(nd) if i not in c.coord_dims(tc)]
     shp = tuple(c.shape[i] for i in ax_nT)
     if np.prod(shp) < n:
         return [c]
@@ -343,13 +340,8 @@ def nTslice_cube(c, n):
         oo = [c]
         for ax, step in ss:
             oo = nli_(
-                    [
-                        [
-                            extract_byAxes_(o, ax, np.s_[i:(i + step)])
-                            for i in range(0, c.shape[ax], step)
-                            ]
-                        for o in oo
-                        ]
+                    [[extract_byAxes_(o, ax, np.s_[i:(i + step)])
+                      for i in range(0, c.shape[ax], step)] for o in oo]
                     )
         return _CubeList(oo)
 
@@ -373,7 +365,7 @@ def unique_yrs_of_cube(
                     emsg = "'mmm' must not be None for adding coord {!r}!"
                     raise ValueError(emsg.format(coord))
             else:
-                _ica.add_year(_c, 'time', name=coord)
+                _ica.add_year(_c, dimc_axis_cube(_c, 'T'), name=coord)
         return np.unique(_c.coord(coord).points)
     elif isIter_(c, xi=_Cube):
         return [unique_yrs_of_cube(i) for i in c]
@@ -397,7 +389,7 @@ def y0y1_of_cube(
                     emsg = "'mmm' must not be None for adding coord {!r}!"
                     raise ValueError(emsg.format(coord))
             else:
-                _ica.add_year(_c, 'time', name=coord)
+                _ica.add_year(_c, dimc_axis_cube(_c, 'T'), name=coord)
         elif mmm and 'season' in coord:
             _c.remove_coord(coord)
             seasonyr_cube(_c, mmm, name=coord)
@@ -443,7 +435,7 @@ def extract_period_cube(
                 emsg = "'mmm' must not be None for adding coord {!r}!"
                 raise ValueError(emsg.format(coord))
         else:
-            _ica.add_year(_c, 'time', name=coord)
+            _ica.add_year(_c, dimc_axis_cube(_c, 'T'), name=coord)
     elif mmm and 'season' in coord:
         _c.remove_coord(coord)
         seasonyr_cube(_c, mmm, name=coord)
@@ -471,7 +463,7 @@ def extract_win_cube(c, d, r=15):
     """
     _c = c.copy()
     try:
-        _ica.add_day_of_year(_c, 'time', name='doy')
+        _ica.add_day_of_year(_c, dimc_axis_cube(_c, 'T'), name='doy')
     except ValueError:
         pass
     x1, x2 = rpt_(d - r, 365), rpt_(d + r, 365)
@@ -499,10 +491,12 @@ def extract_season_cube(c, mmm, valid_season=True):
         else:
             _c = c.copy() # to avoid changing metadata of original CUBE
             try:
-                _ica.add_season_membership(_c, 'time', mmm, name=mmm)
+                _ica.add_season_membership(_c, dimc_axis_cube(_c, 'T'), mmm,
+                                           name=mmm)
             except ValueError:
                 _c.remove_coord(mmm)
-                _ica.add_season_membership(_c, 'time', mmm, name=mmm)
+                _ica.add_season_membership(_c, dimc_axis_cube(_c, 'T'), mmm,
+                                           name=mmm)
             _c.coord(mmm).points = _c.coord(mmm).points.astype(np.int32)
             o = _c.extract(iris.Constraint(**{mmm: True}))
         if valid_season and not ismono_(mmmN_(mmm)):
@@ -527,7 +521,7 @@ def extract_month_cube(c, Mmm):
     """
     _c = c.copy()
     try:
-        _ica.add_month(_c, 'time', name='month')
+        _ica.add_month(_c, dimc_axis_cube(_c, 'T'), name='month')
     except ValueError:
         pass
     return _c.extract(iris.Constraint(month=Mmm[:3].capitalize()))
@@ -688,10 +682,14 @@ def seasonyr_cube(c, mmm, name='seasonyr'):
         else:
             raise Exception(f"unknown seasons {mmm!r}!")
         try:
-            _ica.add_season_year(c, 'time', name=name, seasons=seasons)
+            _ica.add_season_year(c, dimc_axis_cube(c, 'T'),
+                                 name=name,
+                                 seasons=seasons)
         except ValueError:
             c.remove_coord(name)
-            _ica.add_season_year(c, 'time', name=name, seasons=seasons)
+            _ica.add_season_year(c, dimc_axis_cube(c, 'T'),
+                                 name=name,
+                                 seasons=seasons)
     elif isIter_(c, xi=(_Cube, _CubeList, tuple, list)):
         for i in c:
             seasonyr_cube(i, mmm, name=name)
@@ -703,13 +701,13 @@ def yr_doy_cube(c):
     """
     if isinstance(c, _Cube):
         try:
-            _ica.add_year(c, 'time', name='year')
+            _ica.add_year(c, dimc_axis_cube(c, 'T'), name='year')
         except ValueError:
             pass
         else:
             c.coord('year').attributes = {}
         try:
-            _ica.add_day_of_year(c, 'time', name='doy')
+            _ica.add_day_of_year(c, dimc_axis_cube(c, 'T'), name='doy')
         except ValueError:
             pass
         else:
@@ -879,18 +877,15 @@ def area_weights_(c, normalize=False):
     lon = lon.copy()
 
     for coord in (lat, lon):
-        if coord.units in (cf_units.Unit('degrees'),
-                           cf_units.Unit('radians')):
-            coord.convert_units('radians')
+        if coord.units in (cUnit('degree'), cUnit('radian')):
+            coord.convert_units('radian')
         else:
             msg = ("Units of degrees or radians required, coordinate "
-                   "{!r} has units: {!r}".format(coord.name(),
-                                                 coord.units.name))
+                   f"{coord.name()!r} has units: {coord.units.name!r}")
             raise ValueError(msg)
     # Create 2D weights from bounds.
     # Use the geographical area as the weight for each cell
-    ll_weights = _quadrant_area(lat.bounds,
-                                lon.bounds, radius_of_earth)
+    ll_weights = _quadrant_area(lat.bounds, lon.bounds, radius_of_earth)
 
     # Normalize the weights if necessary.
     if normalize:
@@ -1093,7 +1088,7 @@ def get_gwl_y0_(c, gwl, pref=[1861, 1890]):
     """
     _c = pSTAT_cube(c if c.ndim == 1 else rgMean_cube(c), 'year')
     tref = extract_period_cube(_c, *pref)
-    tref = tref.collapsed('time', iris.analysis.MEAN).data
+    tref = tref.collapsed(dimc_axis_cube(tref, 'T'), iris.analysis.MEAN).data
 
     def _G_tR(G, tR):
         if not isIter_(G):
@@ -1273,12 +1268,12 @@ def _unify_coord_attrs(cL, coord_names=None):
 def _unify_time_units(cL):
     CLD0 = 'proleptic_gregorian'
     CLD = 'gregorian'
-    clds = [c.coord('time').units.calendar for c in cL]
+    clds = [dimc_axis_cube(c, 'T').units.calendar for c in cL]
     if len(ouniqL_(clds)) > 1:
         for c in cL:
-            ctu = c.coord('time').units
+            ctu = dimc_axis_cube(c, 'T').units
             if ctu.calendar == CLD0:
-                c.coord('time').units = cf_units.Unit(ctu.origin, CLD)
+                dimc_axis_cube(c, 'T').units = cUnit(ctu.origin, CLD)
     iris.util.unify_time_units(cL)
 
 
@@ -1697,7 +1692,7 @@ def initAnnualCube_(
     mmm = 'jfmamjjasond' if mmm == 'j-d' else mmm
     y0, y1 = y0y1
     ny = y1 - y0 + 1
-    c = extract_byAxes_(c0, 'time', np.s_[:ny])
+    c = extract_byAxes_(c0, axT_cube(c0), np.s_[:ny])
     rm_t_aux_cube(c)
 
     def _mm01():
@@ -1725,21 +1720,17 @@ def initAnnualCube_(
     else:
         c.data = np.zeros(c.shape)
     ##coord('time')
-    c.coord('time').units = cf_units.Unit('days since 1850-1-1',
-                                           calendar='gregorian')
+    ct = dimc_axis_cube(c, 'T')
+    ct.units = TSC_(1900)
     m0, m1, y0_, y0__ = _mm01()
     y0_h = [datetime(i, m0, 1) for i in range(y0_, y0_ + ny)]
     y1_h = [datetime(i, m1, 1) for i in range(y0__, y0__ + ny)]
     tbnds = np.empty((ny, 2))
-    tbnds[:, 0] = cf_units.date2num(y0_h,
-                                    c.coord('time').units.origin,
-                                    c.coord('time').units.calendar)
-    tbnds[:, 1] = cf_units.date2num(y1_h,
-                                    c.coord('time').units.origin,
-                                    c.coord('time').units.calendar)
+    tbnds[:, 0] = ct.units.date2num(y0_h)
+    tbnds[:, 1] = ct.units.date2num(y1_h)
     tdata = np.mean(tbnds, axis=-1)
-    c.coord('time').points = tdata
-    c.coord('time').bounds = tbnds
+    ct.points = tdata
+    ct.bounds = tbnds
     ##var_name ...
     if name:
         c.rename(name)
@@ -1770,8 +1761,8 @@ def pSTAT_cube(
                 stat: getattr(iris.analysis, stat)
                 freq: frequency for statistic
     kwArgs:
-        valid_season: if True and season mmm is crossing years, the 1st & end
-                      year will be excluded
+        valid_season: if True and season mmm is crossing years, the results for
+                      1st & end year will be excluded
            with_year: if year points to be taken into account during aggreation
            stat_opts: options to be passed to stat
     """
@@ -1785,6 +1776,7 @@ def pSTAT_cube(
         raise Exception(ef0.format(stat))
 
     s4 = ('djf', 'mam', 'jja', 'son')
+    _axT = dimc_axis_cube(c, 'T').name()
 
     d_y = dict(year=('year',),
                season=('season', 'seasonyr'),
@@ -1798,11 +1790,11 @@ def pSTAT_cube(
               day=('doy',),
               hour=('hour',))
 
-    dd = dict(hour=(_ica.add_hour, ('time',), dict(name='hour')),
-              day=(_ica.add_day_of_year, ('time',), dict(name='doy')),
-              month=(_ica.add_month, ('time',), dict(name='month')),
-              year=(_ica.add_year, ('time',), dict(name='year')),
-              season=(_ica.add_season, ('time',),
+    dd = dict(hour=(_ica.add_hour, (_axT,), dict(name='hour')),
+              day=(_ica.add_day_of_year, (_axT,), dict(name='doy')),
+              month=(_ica.add_month, (_axT,), dict(name='month')),
+              year=(_ica.add_year, (_axT,), dict(name='year')),
+              season=(_ica.add_season, (_axT,),
                       dict(name='season', seasons=s4)),
               seasonyr=(seasonyr_cube, (s4,), dict(name='seasonyr')))
 
@@ -1822,10 +1814,14 @@ def pSTAT_cube(
             if x in d_.keys():
                 return (dd.copy(), None)
             elif isSeason_(x):
-                tmp = {x: (_ica.add_season_membership, ('time', x),
-                           dict(name=x)),
-                       'seasonyr': (seasonyr_cube, (x,),
-                                    dict(name='seasonyr'))}
+                tmp = {
+                        x: (_ica.add_season_membership,
+                            (_axT, x),
+                            dict(name=x)),
+                        'seasonyr': (seasonyr_cube,
+                                     (x,),
+                                     dict(name='seasonyr'))
+                        }
                 dd_ = dd.copy()
                 dd_.update(tmp)
                 return (dd_, x)
@@ -1839,10 +1835,14 @@ def pSTAT_cube(
             else:
                 f_ = [f_ for f_ in x if f_ not in d_.keys()]
                 if len(f_) == 1 and isSeason_(f_[0]):
-                    tmp = {f_[0]: (_ica.add_season_membership, ('time', f_[0]),
-                                   dict(name=f_[0])),
-                           'seasonyr': (seasonyr_cube, (f_[0],),
-                                        dict(name='seasonyr'))}
+                    tmp = {
+                            f_[0]: (_ica.add_season_membership,
+                                    (_axT, f_[0]),
+                                    dict(name=f_[0])),
+                            'seasonyr': (seasonyr_cube,
+                                         (f_[0],),
+                                         dict(name='seasonyr'))
+                            }
                     dd_ = dd.copy()
                     dd_.update(tmp)
                     return (dd_, f_[0])
@@ -1877,12 +1877,12 @@ def pSTAT_cube(
             tmp = c.aggregated_by(dff, getattr(iris.analysis, stat),
                                   **stat_opts)
             if isSeason_(mmm) and not ismono_(mmmN_(mmm)):
-                tmp = extract_byAxes_(tmp, 'time', np.s_[1:-1])
+                tmp = extract_byAxes_(tmp, _axT, np.s_[1:-1])
         else:
             tmp = c.aggregated_by(dff, getattr(iris.analysis, stat),
                                   **stat_opts)
             if x == 'season' and valid_season:
-                tmp = extract_byAxes_(tmp, 'time', np.s_[1:-1])
+                tmp = extract_byAxes_(tmp, _axT, np.s_[1:-1])
         rm_t_aux_cube(tmp, keep=dff)
         return tmp
 
@@ -1970,9 +1970,8 @@ def cubesv_(c, filename,
     ... save CUBE to nc with dim_t unlimitted ...
     """
     if isinstance(c, _Cube):
-        #repair_lccs_(c) # pls. execute outside the function if necessary
-        dms = [i.name() for i in c.dim_coords]
-        udm = ('time',) if 'time' in dms else None
+        #repair_lccs_(c) # execute before if necessary
+        udm = dimc_axis_cube(c, 'T')
         iris.save(c, filename,
                   netcdf_format=netcdf_format,
                   local_keys=local_keys,
@@ -2005,13 +2004,13 @@ def _ri1d(c1d, v):
 
 
 def ri_cube(c, v, nmin=10):
-    o = extract_byAxes_(c, 'time', 0)
-    rm_sc_cube(o)
-    pst_(o, 'recurrence interval', units='year')
-    ax = axT_cube(c)
-    if ax is None or c.shape[ax] < nmin:
+    ax_t = axT_cube(c)
+    if ax_t is None or c.shape[ax_t] < nmin:
         emsg = "too few data for estimation!"
         raise Exception(emsg)
+    o = extract_byAxes_(c, ax_t, 0)
+    rm_sc_cube(o)
+    pst_(o, 'recurrence interval', units='year')
     ax_fn_mp_(c, ax, _ri1d, o, v)
     return o
 
@@ -2098,17 +2097,11 @@ def doy_f_cube(c,
 
     if out is None:
         out = extract_byAxes_(c, ax_t, doy - 1)
+        cT = dimc_axis_cube(out, 'T')
         #select 2000 as it is a leap year...
-        out.coord('time').units = cf_units.Unit(
-                'days since 1850-1-1',
-                calendar='standard',
-                )
-        d0 = cf_units.date2num(
-                datetime(2000, 1, 1),
-                out.coord('time').units.origin,
-                out.coord('time').units.calendar,
-                )
-        dimT = out.coord('time').copy(doy - 1 + d0)
+        cT.units = TSC_(1900)
+        d0 = cT.units.date2num(datetime(2000, 1, 1))
+        dimT = cT.copy(doy - 1 + d0)
         out.replace_coord(dimT)
 
     if pp:
@@ -2133,7 +2126,7 @@ def doy_f_cube(c,
 def pcorr_cube(x, y, z, **cck):
     assert x.shape == y.shape == z.shape
     if 'corr_coords' not in cck:
-        cck.update(dict(corr_coords='time'))
+        cck.update(dict(corr_coords=dimc_axis_cube(x, 'T').name()))
     if 'common_mask' not in cck:
         cck.update(dict(common_mask=True))
     from iris.analysis.maths import apply_ufunc as _apply
@@ -2351,81 +2344,9 @@ def myAuxTime_(
     kwArgs:
         unit, calendar (string): see cf_unit
     """
-    _unit_ = cf_units.Unit(unit, calendar=calendar)
-    dnum = cf_units.date2num(datetime(year, month, day, *hms), unit, calendar)
-    return _iAuxC(dnum, units=_unit_, standard_name='time')
-
-
-def date_mv_mon_(date, dmm):
-    if 1 <= date.month + dmm <= 12:
-        return date.replace(month=date.month+dmm)
-    else:
-        return date.replace(year=date.year+(date.month+dmm-1)//12,
-                            month=rpt_(date.month+dmm, 13, 1))
-
-
-def get_dates_(datestr, delta='day'):
-    def _get_ymdhms(s):
-        if ((len(s) < 4) or
-            (':' in s and s.index(":") != 8) or
-            (':' not in s and len(s) > 8)):
-            raise Exception("unknown date string!")
-        ss = ((0, 4), (4, 6), (6, 8), (9, 11), (11, 13), (13, 15))
-        def _int(sss):
-            if s[slice(*sss)]:
-                return int(s[slice(*sss)])
-        return tuple(_int(_s) for _s in ss if _int(_s))
-
-    delta_day = timedelta(days=1)
-    if '-' not in datestr:
-        ymd = _get_ymdhms(datestr)
-        if len(ymd) == 1:
-            date0 = datetime(*ymd, 1, 1)
-            date1 = datetime(*ymd, 12, 31)
-        elif len(ymd) == 2:
-            date0 = datetime(*ymd, 1)
-            date1 = datetime(ymd[0] + ymd[1]//12,
-                             ymd[1]%12 + 1,
-                             1) - delta_day
-        else:
-            date0 = datetime(*ymd)
-            date1 = date0
-    else:
-        date_ = datestr.split('-')
-        if len(date_[0]) != len(date_[1]) or date_[0] >= date_[1]:
-            emsg = "I don't know what to do with the specipfied DATE!"
-            raise Exception(emsg)
-        else:
-            ymd0 = _get_ymdhms(date_[0])
-            ymd1 = _get_ymdhms(date_[1])
-        if len(ymd0) == 1:
-            date0 = datetime(*ymd0, 1, 1)
-            date1 = datetime(*ymd1, 12, 31)
-        elif len(ymd0) == 2:
-            date0 = datetime(*ymd0, 1)
-            date1 = datetime(ymd1[0] + ymd1[1]//12,
-                             ymd1[1]%12 + 1,
-                             1) - delta_day
-        else:
-            date0 = datetime(*ymd0)
-            date1 = datetime(*ymd1)
-    o = []
-    while (date0 <= date1):
-        o.append(date0)
-        if delta in ('second', 'minute', 'hour', 'day', 'week',):
-            incr = timedelta(**{delta+'s': 1})
-            date0 += incr
-        elif re.match('(\d+)(\w+)', delta):
-            _n, _delta = re.findall('(\d+)(\w+)', delta)[0]
-            if _delta in ('second', 'minute', 'hour', 'day', 'week',):
-                incr = timedelta(**{_delta+'s': int(_n)})
-                date0 += incr
-        elif delta == 'month':
-            date0 = date_mv_mon_(date0, 1)
-        elif re.match('(\d+)month', delta):
-            _n = re.findall('(\d+)month', delta)[0]
-            date0 = date_mv_mon_(date0, int(_n))
-    return np.asarray(o)
+    _unit = cUnit(unit, calendar=calendar)
+    dnum = _unit.date2num(datetime(year, month, day, *hms))
+    return _iAuxC(dnum, units=_unit, standard_name='time')
 
 
 def myDimTime_(
@@ -2442,11 +2363,11 @@ def myDimTime_(
           delta (str): time delta (default 1 day)
 
     kwArgs:
-        unit, calendar (string): see cf_unit
+        unit, calendar (str): see cf_unit
     """
-    _unit_ = cf_units.Unit(unit, calendar=calendar)
-    dnum = cf_units.date2num(get_dates_(datestr, delta=delta), unit, calendar)
-    return _iDimC(dnum, units=_unit_, standard_name='time')
+    _unit = cUnit(unit, calendar=calendar)
+    dnum = _unit.date2num(iterDT_(datestr, delta=delta))
+    return _iDimC(dnum, units=_unit, standard_name='time')
 
 
 def div_cube(uc, vc):
@@ -2459,10 +2380,10 @@ def div_cube(uc, vc):
     amsg = "xycoords error!"
     assert ucxy == vcxy and all(i is not None for i in ucxy), amsg
     ucx, ucy = ucxy
-    if ucx.units.origin == ucy.units.origin == 'meters':
+    if ucx.units == ucy.units == cUnit('m'):
         du = np.gradient(uc.data, ucx.points, axis=uc.coord_dims(ucx))
         dv = np.gradient(vc.data, ucy.points, axis=uc.coord_dims(ucy))
-    elif ucx.units == ucy.units and 'degree' in ucx.units.origin:
+    elif ucx.units == ucy.units == cUnit('degree'):
         du = np.gradient(uc.data, axis=uc.coord_dims(ucx))
         dv = np.gradient(vc.data, axis=uc.coord_dims(ucy))
         _ucx, _ucy = ucx.copy(), ucy.copy()
@@ -2478,7 +2399,8 @@ def div_cube(uc, vc):
         wy = np.gradient(np.deg2rad(y2d.astype(np.float64)), axis=ydim) * _r
         du, dv = du / wx, dv / wy
     else:
-        emsg = "check the units in xycoords. We accept 'meters' or 'degrees'!"
+        emsg = ("check the units in xycoords. We accept "
+                f"{cUnit('m')!r} or {cUnit('degree')!r}!")
         raise(emsg)
     o = uc.copy(du + dv)
     o.rename('divergence')
@@ -2496,10 +2418,10 @@ def curl_cube(uc, vc):
     amsg = "xycoords error!"
     assert ucxy == vcxy and all(i is not None for i in ucxy), amsg
     ucx, ucy = ucxy
-    if ucx.units.origin == ucy.units.origin == 'meters':
+    if ucx.units == ucy.units == cUnit('m'):
         du = np.gradient(uc.data, ucy.points, axis=uc.coord_dims(ucy))
         dv = np.gradient(vc.data, ucx.points, axis=uc.coord_dims(ucx))
-    elif ucx.units == ucy.units and 'degree' in ucx.units.origin:
+    elif ucx.units == ucy.units == cUnit('degree'):
         du = np.gradient(uc.data, axis=uc.coord_dims(ucy))
         dv = np.gradient(vc.data, axis=uc.coord_dims(ucx))
         _ucx, _ucy = ucx.copy(), ucy.copy()
@@ -2515,7 +2437,8 @@ def curl_cube(uc, vc):
         wy = np.gradient(np.deg2rad(y2d.astype(np.float64)), axis=ydim) * _r
         du, dv = du / wy, dv / wx
     else:
-        emsg = "check the units in xycoords. We accept 'meters' or 'degrees'!"
+        emsg = ("check the units in xycoords. We accept "
+                f"{cUnit('m')!r} or {cUnit('degree')!r}!")
         raise(emsg)
     o = uc.copy(dv - du)
     o.rename('curl')
