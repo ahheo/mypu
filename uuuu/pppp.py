@@ -10,13 +10,14 @@ import warnings
 
 from .ffff import nanMask_, kde__, flt_, flt_l, isIter_, rpt_, ind_inRange_
 from .cccc import y0y1_of_cube, extract_period_cube
-from .xxxx import loa_
+from .ccxx import loa_, isyx_
 
 
 __all__ = [
         #----------------------------------------------------------------------- general
         'init_fig_',
         'aligned_cb_',
+        'aligned_qk_',
         'aligned_tx_',
         'annotate_heatmap',
         'heatmap',
@@ -632,10 +633,10 @@ def axs_abc_(
         ):
     fig = _fig_ax(ax)
     fra = fig.get_figwidth() / fig.get_figheight()
-    dy = abs(dx * fra) if dy is None else dx
+    dy = abs(dx * fra) if dy is None else dy
     x0, _, _, y1 = _minmaxXYlm(ax)
     kD = dict(ha='left') if dx >= 0 else dict(ha='right')
-    kD = dict(va='bottom') if dy >= 0 else dict(ha='top')
+    kD.update(dict(va='bottom') if dy >= 0 else dict(va='top'))
     kD.update(kwargs)
     fig.text(x0 + dx, y1 + dy, s, fontdict=fontdict, **kD)
 
@@ -1251,8 +1252,7 @@ def pstGeoAx_(ax, delta=(30, 20), coastline=True, **kwargs):
 
 def da_map_(
         da,
-        *subplotspec,
-        fig=None,
+        ax=None,
         ext=None,
         func='pcolormesh',
         sc=1,
@@ -1260,17 +1260,16 @@ def da_map_(
         pK_={},
         ):
     x, y = loa_(da)
-    fig = plt.gcf() if fig is None else fig
-    ax = fig.add_subplot(*subplotspec, projection=ccrs.PlateCarree())
+    ax = plt.gca() if ax is None else ax
     if ext:
         ax.set_extent(ext, crs=ccrs.PlateCarree())
     axK_.setdefault('frame_on', False)
     ax.set(**axK_)
     _func = getattr(ax, func)
-    o = _func(x, y, da.data*sc,
+    o = _func(x, y, da.data*sc if isyx_(da) else da.data.T*sc,
               transform=ccrs.PlateCarree(),
               **pK_)
-    return (ax, o)
+    return o
 
 
 def das_map_(
@@ -1296,7 +1295,7 @@ def das_map_(
         o = []
     for i, (da, ti, c) in enumerate(zip(das, tis, 'kwbrmyg')):
         x, y = loa_(da)
-        o_ = _func(x, y, da.data*sc,
+        o_ = _func(x, y, da.data*sc if isyx_(da) else da.data.T*sc,
                    transform=ccrs.PlateCarree(),
                    **pK_)
         if ti:
@@ -1318,6 +1317,7 @@ def uv_map_(
         vda,
         ax=None,
         ext=None,
+        func='quiver',
         sc_u=1,
         sc_v=1,
         axK_={},
@@ -1330,7 +1330,9 @@ def uv_map_(
     ax.set(**axK_)
     _func = getattr(ax, func)
     x, y = loa_(uda)
-    o = _func(x, y, uda.data*sc_u, vda.data*sc_v,
+    udata = uda.data*sc_u if isyx_(uda) else uda.data.T*sc_u
+    vdata = vda.data*sc_v if isyx_(vda) else vda.data.T*sc_v
+    o = _func(x, y, udata, vdata,
               transform=ccrs.PlateCarree(),
               **pK_)
     return o

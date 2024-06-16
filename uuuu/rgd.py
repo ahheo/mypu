@@ -21,7 +21,7 @@ from shapely.geometry import Polygon
 from scipy.sparse import csc_matrix, diags
 
 from .ffff import *
-from .cccc import (ax_fn_mp_, extract_byAxes_, get_loa_, get_xy_dim_,
+from .cccc import (ax_fn_mp_, extract_byAxes_, _loa, _dimcXY,
                    half_grid_, _isyx)
 
 
@@ -77,8 +77,8 @@ def rgd_scipy_(src_cube, target_cube,
                cp_target_mask=False):
     #from scipy.interpolate import griddata
     dmap = _dmap(src_cube, target_cube)
-    loT, laT = get_loa_(target_cube)
-    loS, laS = get_loa_(src_cube)
+    loT, laT = _loa(target_cube)
+    loS, laS = _loa(src_cube)
     if loT is None or loS is None:
         raise Exception("missing longitude/latitude coords.")
     isyxT = _isyx(target_cube)
@@ -138,8 +138,8 @@ def rgd_scipy_(src_cube, target_cube,
 
 def _get_dimc_dim(src_cube, target_cube):
     dimc_dim = []
-    xcT, ycT = get_xy_dim_(target_cube)
-    xcS, ycS = get_xy_dim_(src_cube)
+    xcT, ycT = _dimcXY(target_cube)
+    xcS, ycS = _dimcXY(src_cube)
     xydimS = src_cube.coord_dims(xcS) + src_cube.coord_dims(ycS)
     for c in src_cube.dim_coords:
         dim = src_cube.coord_dims(c)[0]
@@ -190,8 +190,8 @@ def _regrid_slice(data, xS, yS, xT, yT, method, fill_value, rescale):
 
 
 def _dmap(src_cube, target_cube):
-    xT, yT = get_xy_dim_(target_cube)
-    xS, yS = get_xy_dim_(src_cube)
+    xT, yT = _dimcXY(target_cube)
+    xS, yS = _dimcXY(src_cube)
     if xT is None or xS is None:
         raise Exception("missing 'x'/'y' dimcoord")
     return {target_cube.coord_dims(yT)[0]: src_cube.coord_dims(yS)[0],
@@ -288,7 +288,7 @@ def _slice_ll_pnts(coord, shp, ax, df_=False):
 
 
 def _slice_ll_bpd(cube_slice):
-    lo, la = get_loa_(cube_slice)
+    lo, la = _loa(cube_slice)
     shp = cube_slice.shape
     lo_d = cube_slice.coord_dims(lo)
     la_d = cube_slice.coord_dims(la)
@@ -342,13 +342,12 @@ def _iwght(i, bpdT, bpdS, loR, laR):
 
 
 def _weights(bpdT, bpdS, thr):
-    import multiprocessing as mp
-    nproc = min(mp.cpu_count(), 32)
-
     wght, rows, cols = [], [], []
     loR = (bpdT['lod'] + bpdS['lod']) / 2 
     laR = (bpdT['lad'] + bpdS['lad']) / 2
-    if bpdT['lop'].size > 1e6:
+    if bpdT['lop'].size > 1e6:#------------------------------------------------ use mp to accelerate
+        import multiprocessing as mp
+        nproc = min(mp.cpu_count(), 32)
         P = mp.Pool(nproc)
         tmp = P.starmap_async(_iwght, [(i, bpdT, bpdS, loR, laR)
                                        for i in range(bpdT['lop'].size)])
@@ -438,7 +437,7 @@ class POLYrgd:
         # Snapshot the state of the cubes to ensure that the regridder
         # is impervious to external changes to the original source cubes.
         self._src_cube = src_cube.copy()
-        xT, yT = get_xy_dim_(target_cube)
+        xT, yT = _dimcXY(target_cube)
         xydT = target_cube.coord_dims(xT) + target_cube.coord_dims(yT)
         self._target_cube = target_cube[ind_shape_i_(target_cube.shape,
                                                      0,
@@ -448,7 +447,7 @@ class POLYrgd:
 
     def _info(self, out=False):
         if self._regrid_info is None:
-            xS, yS = get_xy_dim_(self._src_cube)
+            xS, yS = _dimcXY(self._src_cube)
             _S = self._src_cube.coord_dims(xS) + self._src_cube.coord_dims(yS)
             ind = ind_shape_i_(self._src_cube.shape, 0, axis=_S)
             self._regrid_info = _rgd_poly_info(self._src_cube[ind],
@@ -462,9 +461,9 @@ class POLYrgd:
         if valid_check:
             if not isinstance(src, _Cube):
                 raise TypeError("'src' must be a Cube")
-            loG, laG = get_loa_(self._src_cube)
+            loG, laG = _loa(self._src_cube)
             src_grid = (loG.copy(), laG.copy())
-            loS, laS = get_loa_(src)
+            loS, laS = _loa(src)
             #if (loS, laS) != src_grid:
             if not (np.array_equiv(loS.points, loG.points) and 
                     np.array_equiv(laS.points, laG.points)):

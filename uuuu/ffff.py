@@ -3,12 +3,16 @@
 >------------------------------whoknows functions-----------------------------<
 >--#########################################################################--<
 * aggr_func_            : aggregate function over ndarray
+* aw_loa_bnds_          : spherical segment areas
+* ax_any_               : any upon axes other than the given one
 * b2l_endian_           : return little endian copy
+* bA2ind_               : transform boolean array to indices
 * compressLL_           : compress 2D list
 * consecutive_          : consecutive functions
 * consecutiveN_         : consecutive numbers
 * date_mv_mon_          : date displace by months
 * dgt_                  : digits of the int part of a number
+* doy2date_             : day of year to datetime
 * edotm_                : end day of this month
 * el_join_              : element-wise join
 * ext_                  : get extension of file name
@@ -20,6 +24,8 @@
 * half_grid_            : points between grids
 * haversine_            : distance between geo points in radians
 * iind_                 : rebuild extraction indices (n axes)
+* in_loalim_            : grids if inside a rectangle
+* in_polygons_          : points if inside polygon(s)
 * indFront_             : move element with specified index to front
 * ind_inRange_          : indices of values in a range
 * ind_s_                : extraction indices (1 axis)       --> inds_ss_
@@ -29,8 +35,10 @@
 * inds_ss_              : extraction indices (n axes)       --> extract_
 * intsect_              : intersection of lists
 * is1dIter_             : if 1d Iterable
+* isdecr_               : if monotonic decreasing
 * isGI_                 : if Iterator
 * isIter_               : if Iterable but not str or bytes
+* isincr_               : if monotonic increasing
 * isMonth_              : string if a month
 * ismono_               : check if ismononic
 * isSeason_             : string if is a season
@@ -42,6 +50,7 @@
 * l_flp_                : flip list
 * l_ind_                : extract list by providing indices
 * l2b_endian_           : return big endian copy
+* loa2d_                : meshgrid (& transpose) longitue/latitude if necessary
 * latex_unit_           : m s-1 -> m s$^{-1}$
 * ll_                   : end logging
 * m2s_                  : season
@@ -75,6 +84,7 @@
 * ss_fr_sl_             : subgroups that without intersections
 * sub_shp_              : subgroup a shape
 * timerMain_            : decorator for executable function
+* tryattr_              : safely getattr
 * uniqL_                : unique elements of list
 * valid_seasons_        : if provided seasons valid
 * valueEqFront_         : move elements equal specified value to front
@@ -99,12 +109,16 @@ import warnings
 
 
 __all__ = ['aggr_func_',
+           'aw_loa_bnds_',
+           'ax_any_',
            'b2l_endian_',
+           'bA2ind_',
            'compressLL_',
            'consecutive_',
            'consecutiveN_',
            'date_mv_mon_',
            'dgt_',
+           'doy2date_',
            'edotm_',
            'el_join_',
            'ext_',
@@ -116,6 +130,8 @@ __all__ = ['aggr_func_',
            'half_grid_',
            'haversine_',
            'iind_',
+           'in_loalim_',
+           'in_polygons_',
            'indFront_',
            'ind_inRange_',
            'ind_s_',
@@ -125,8 +141,10 @@ __all__ = ['aggr_func_',
            'inds_ss_',
            'intsect_',
            'is1dIter_',
+           'isdecr_',
            'isGI_',
            'isIter_',
+           'isincr_',
            'isMonth_',
            'ismono_',
            'isSeason_',
@@ -138,6 +156,7 @@ __all__ = ['aggr_func_',
            'l_flp_',
            'l_ind_',
            'l2b_endian_',
+           'loa2d_',
            'latex_unit_',
            'll_',
            'm2s_',
@@ -171,6 +190,7 @@ __all__ = ['aggr_func_',
            'ss_fr_sl_',
            'sub_shp_',
            'timerMain_',
+           'tryattr_',
            'uniqL_',
            'valid_seasons_',
            'valueEqFront_',
@@ -283,29 +303,38 @@ def nli_(l):
     return list(_not_list_iter(l))
 
 
-def flt_(l):
+def flt_(l, nx=None, n=0):
     """
     ... flatten a nested List deeply (output generator) ...
     """
     from typing import Iterable
     for el in l:
-        if isinstance(el, Iterable) and not isinstance(el, (str, bytes)):
-            yield from flt_(el)
+        if (isinstance(el, Iterable) and
+            not isinstance(el, (str, bytes)) and
+            (n < nx if nx is not None else True)):
+            yield from flt_(el, nx=nx, n=n+1)
         else:
             yield el
 
 
-def flt_l(l):
+def flt_l(l, nx=None, n=0):
     """
     ... flatten a nested List deeply (output a list) ...
+
+    kwArgs
+    ------
+    nx: maximum levels for flattening (default to None as unlimited)
+     n: flattening counter; NOTE: used within recursive call only
 
     Examples
     --------
     >>> x = [1, 2, (3, 4), [5, 6, [7, 8], (9, 10)]]
     >>> flt_l(x)
     Out: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    >>> flt_l(x, nx=1)
+    Out: [1, 2, 3, 4, 5, 6, [7, 8], (9, 10)]
     """
-    return list(flt_(l))
+    return list(flt_(l, nx=nx, n=n))
 
 
 def kde_(obs, **kde_opts):
@@ -335,7 +364,7 @@ def kde__(
     kwArgs
     ------
     log_it: if log(obs) before fitting
-    
+
     Returns
     -------
         x: true x
@@ -365,14 +394,27 @@ def ismono_(x, axis=-1):
     --------
     >>> x = [[2, 3, 4], [5, 6, 7], [3, 4, 5]]
     >>> x = np.asarray(x)
-    >>> ismon_(x)
+    >>> ismono_(x)
     Out: True
     >>> ismono_(x, axis=0)
     Out: False
     """
-
     return (np.all(np.diff(x, axis=axis) > 0)
             or np.all(np.diff(x, axis=axis) < 0))
+
+
+def isincr_(x, axis=-1):
+    """
+    ... check if an array is monotonic increasing along axis (default -1) ...
+    """
+    return np.all(np.diff(x, axis=axis) > 0)
+
+
+def isdecr_(x, axis=-1):
+    """
+    ... check if an array is monotonic decreasing along axis (default -1) ...
+    """
+    return np.all(np.diff(x, axis=axis) < 0)
 
 
 def nSlice_(shape, axis=-1):
@@ -612,7 +654,7 @@ def iind_(inds):
         return tuple(inds_)
 
 
-def extract_(xnd, axis, sl_i, *vArg):
+def extract_(xnd, axis, sl_i, *vArg, fancy=None):
     """
     ... extract ARRAY by providing selection along axis/axes ...
 
@@ -641,13 +683,13 @@ def extract_(xnd, axis, sl_i, *vArg):
 
     nArg = [(i, j) for i, j in zip(ax, sl)]
     nArg = tuple(j for i in nArg for j in i)
-    if (hasattr(xnd, '__orthogonal_indexing__') and
-        xnd.__orthogonal_indexing__):
-        inds = inds_ss_(xnd.ndim, *nArg, fancy=False)
-    else:
-        inds = inds_ss_(xnd.ndim, *nArg, fancy=True)
+    if fancy is None:
+        if tryattr_(xnd, '__orthogonal_indexing__'):
+            fancy = False
+        else:
+            fancy = True
 
-    return xnd[inds]
+    return xnd[inds_ss_(xnd.ndim, *nArg, fancy=fancy)]
 
 
 def ind_inRange_(
@@ -1122,7 +1164,7 @@ def _month_year_adjust(seasons):
 
 def _m2sm(month, season):
     """
-    ... unvectorized m2sm_ ; season membership...
+    ... season membership...
 
     Examples
     --------
@@ -1134,7 +1176,7 @@ def _m2sm(month, season):
 
 def _m2sya(month, seasons=('djf', 'mam', 'jja', 'son')):
     """
-    ... unvectorized m2sya_ ; year adjust according to defined seasons ...
+    ... year adjust according to defined seasons ...
 
     Examples
     --------
@@ -1147,7 +1189,7 @@ def _m2sya(month, seasons=('djf', 'mam', 'jja', 'son')):
 
 def _m2s(month, seasons=('djf', 'mam', 'jja', 'son')):
     """
-    ... unvectorized m2s_ ; month to defined season ...
+    ... month to defined season ...
 
     Examples
     --------
@@ -1689,8 +1731,12 @@ def robust_bc2_(
         if (len(pd.unique(axes)) != len(axes) or
             any([i not in range(len(shape)) for i in axes])):
             raise ValueError("one or more axes exceed target shape of data!")
+        if any(dshp[i] != shape[ii] for i, ii in enumerate(axes)):
+            raise ValueError("unmatched shape between data and destination!")
     else:
         axes = _match2shps(dshp, shape, fw=fw)
+    if not isincr_(axes):
+        data = np.moveaxis(data, np.argsort(axes), np.arange(len(axes)))
     shp_ = tuple(ii if i in axes else 1 for i, ii in enumerate(shape))
     return np.broadcast_to(data.reshape(shp_), shape)
 
@@ -2378,30 +2424,30 @@ def half_grid_(x, side='i', axis=-1, loa=None, rb=360):
     --------
     >>> x = np.arange(6).reshape(2, -1)
     >>> half_grid_(x)
-    Out: 
+    Out:
     array([[0.5, 1.5],
            [3.5, 4.5]])
     >>> half_grid_(x, side='l')
-    Out: 
+    Out:
     array([[-0.5,  0.5,  1.5],
            [ 2.5,  3.5,  4.5]])
     >>> half_grid_(x, side='r')
-    Out: 
+    Out:
     array([[0.5, 1.5, 2.5],
            [3.5, 4.5, 5.5]])
     >>> half_grid_(x, side='b')
-    Out: 
+    Out:
     array([[-0.5,  0.5,  1.5,  2.5],
            [ 2.5,  3.5,  4.5,  5.5]])
     >>> half_grid_(half_grid_(x, side='i'), side='i', axis=0)
     Out: array([[2., 3.]])
     >>> half_grid_(half_grid_(x, side='b'), side='b', axis=0)
-    Out: 
+    Out:
     array([[-2., -1.,  0.,  1.],
            [ 1.,  2.,  3.,  4.],
            [ 4.,  5.,  6.,  7.]])
     >>> half_grid_(uu.half_grid_(x, side='b'), side='b', axis=0, loa='lo')
-    Out: 
+    Out:
     array([[358., 359.,   0.,   1.],
            [  1.,   2.,   3.,   4.],
            [  4.,   5.,   6.,   7.]])
@@ -2515,7 +2561,7 @@ def iterDT_(datestr, delta='day'):
            datetime.datetime(2000, 1, 3, 0, 0), ...
            datetime.datetime(2000, 12, 31, 0, 0)], dtype=object)
     >>> iterDT_('2000', '3month')
-    Out: 
+    Out:
     array([datetime.datetime(2000, 1, 1, 0, 0),
            datetime.datetime(2000, 4, 1, 0, 0),
            datetime.datetime(2000, 7, 1, 0, 0),
@@ -2591,3 +2637,170 @@ def iterDT_(datestr, delta='day'):
         else:
             raise Exception(emsg)
     return np.asarray(o)
+
+
+def doy2date_(*args):
+    """
+    ... day of year to date ...
+
+    Args
+    ----
+    yyyydoy: str: 'YYYYdoy' | int: YYYYdoy | two int: YYYY, doy
+    """
+    from datetime import datetime, timedelta
+    msg = "passed args should only be single str or one or two int"
+    if len(args) == 2:
+        yyyy, doy = args
+    elif len(args) == 1:
+        arg = args[0]
+        if isinstance(arg, int):
+            yyyy, doy = arg//1000, arg%1000
+        elif isinstance(arg, str):
+            yyyy, doy = int(arg[:4]), int(arg[4:])
+        else:
+            raise ValueError(msg)
+    else:
+        raise ValueError(msg)
+    dt0 = datetime(yyyy - 1, 12, 31)
+    delta = timedelta(days=1)
+    return dt0 + doy * delta
+
+
+def loa2d_(lo, la, isYX=True):
+    """
+    ... meshgrid (& transpose) longitue/latitude if necessary ...
+
+    Args
+    ----
+      lo: longitude
+      la: latitude
+
+    kwArgs
+    ------
+    isYX: if 'x' axis is after 'y' axis
+    """
+    if lo.ndim != 2:
+        if isYX:
+            x, y = np.meshgrid(lo, la)
+        else:
+            y, x = np.meshgrid(la, lo)
+    else:
+        if isYX:
+            x, y = lo, la
+        else:
+            x, y = lo.T, la.T
+    return (x, y)
+
+
+def in_loalim_(lo, la, shp, axXY=None, lolim=None, lalim=None, isYX=True):
+    """
+    ... grids if inside a rectangle specified by longitude/latitude limits ...
+
+    Args
+    ----
+       lo: longitude
+       la: latitude
+      shp: shape of grided data
+
+    kwArgs
+    ------
+     axXY: axes for 'x' and 'y'
+    lolim: longitude limits
+    lalim: latitude limits
+     isYX: if 'x' axis is after 'y' axis
+    """
+    axXY = tuple(range(len(shp))[-2:]) if axXY is None else axXY
+    lo2d, la2d = loa2d_(lo, la, isYX)
+    booL = []
+    if lolim is not None:
+        booL.append(ind_inRange_(lo2d, *lolim, r_=360))
+    if lalim is not None:
+        booL.append(ind_inRange_(la2d, *lalim))
+    if booL:
+        return robust_bc2_(np.logical_and.reduce(booL), shp, axXY)
+    else:
+        return np.full(shape=shp, fill_value=True)
+
+
+def in_polygons_(poly, points, **kwArgs):
+    """
+    ... if points within polygon(s) ...
+
+    Args
+    ----
+      poly: mpl.path.Path
+    points: series of (x, y)
+    """
+    if not isIter_(poly):
+        ind = poly.contains_points(points, **kwArgs)
+    elif len(poly) < 2:
+        ind = poly[0].contains_points(points, **kwArgs)
+    else:
+        inds = [i.contains_points(points, **kwArgs) for i in poly]
+        ind = np.logical_or.reduce(inds)
+    return ind
+
+
+def tryattr_(x, attr, ifno=None):
+    """
+    ... safely get attr ...
+    """
+    return getattr(x, attr) if hasattr(x, attr) else ifno
+
+
+def ax_any_(x, axis=-1, _where=False):
+    """
+    ... any upon axes other than the given one ...
+    """
+    _x = x.swapaxes(axis, -1)
+    _n = _x.shape[-1]
+    o = np.any(_x.reshape(-1, _n), axis=0)
+    return np.where(o) if _where else o
+
+
+def bA2ind_(x, fancy=False):
+    """
+    ... transform boolean array to indices ...
+    """
+    def _f(ax):
+        ind1ax = ax_any_(x, axis=ax)
+        if np.all(ind1ax):
+            return slice(None)
+        else:
+            return np.where(ind1ax)[0]
+    o = []
+    for i in range(x.ndim):
+        o.append(_f(i))
+    return iind_(tuple(o)) if fancy else tuple(o)
+
+
+def aw_loa_bnds_(lob, lab, rEARTH=6367470):
+    """
+    ... spherical segment areas ...
+
+    Args
+    ----
+     lob: longitude bounds (radians)
+     lab: latitude bounds (radians)
+
+    kwArgs
+    ------
+    rEARTH: radius of the earth (currently assumed spherical)
+    """
+    if (lob.shape[-1] != 2 or lab.shape[-1] != 2):                             # ensure pairs of bounds
+        raise ValueError("Bounds must be [...,2] array")
+
+    radius_sqr = rEARTH**2                                                     # fill in a new array of areas
+    lob_64 = lob.astype(np.float64)
+    lab_64 = lab.astype(np.float64)
+    lob0, lob1 = np.moveaxis(lob_64, -1, 0)
+    lab0, lab1 = np.moveaxis(lab_64, -1, 0)
+    ylen = np.sin(lab1) - np.sin(lab0)
+    xlen = lob1 - lob0
+
+    if lob.ndim == lab.ndim == 2:
+        areas = radius_sqr * np.outer(ylen, xlen)
+    elif lob.shape == lab.shape:
+        areas = radius_sqr * ylen * xlen
+
+    return np.abs(areas)                                                       # we use abs because backwards bounds (min > max) give negative areas.

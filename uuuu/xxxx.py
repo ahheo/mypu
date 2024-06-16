@@ -11,7 +11,7 @@
 Date last modified: 11.11.2020
 """
 
-from xarray import (open_dataset, open_mfdataset,
+from xarray import (open_dataset, open_mfdataset, merge as xmerge,
                     Dataset as XDS, DataArray as XDA)
 
 from wrf import ALL_TIMES, getvar
@@ -28,16 +28,8 @@ from .uuuu import *
 
 __all__ = [
 #------------------------------------------------------------------------------- general
+        'x2iris_',
         'x2nc_',
-        'xax_',
-        'xaxT_',
-        'xaxX_',
-        'xaxY_',
-        'xaxZ_',
-        'xdimT_',
-        'xdimX_',
-        'xdimY_',
-        'xdimZ_',
         'xds_',
         'xmean_',
         'xmeanT_',
@@ -56,23 +48,25 @@ __all__ = [
         'gsod_',
 #------------------------------------------------------------------------------- wrf, e5
         'ds_',
+        'ds_close_',
         'DS',
         'getvar_',
-        'hgt_wrf_',
-        'hgt_e5_',
-        'lu_wrf_',
-        'tp_wrf_',
-        'tp_e5_',
-        's2a_',
-        'swtp_',
-        'rho_wrf_',
-        'zstag_wrf_',
-        'wvt_wrf_',
-        'loa_',
+        'cmg_read_',
         ]
 
 
 #------------------------------------------------------------------------------- general
+def x2iris_(da):
+    o = da.assign_coords({i: getattr(da, i)
+                          for i in da.dims if i not in da.coords})
+    for i in _loa(o):
+        try:
+            i.attrs.update(units='degree')
+        except:
+            pass
+    return o.to_iris()
+
+
 def x2nc_(da, fn):
     try:
         da.to_netcdf(fn)
@@ -85,53 +79,363 @@ def x2nc_(da, fn):
             raise _TE
 
 
-def xds_(fn):
+def xds_(fn, **kwargs):
     if isIter_(fn):
-        _dimT = xdimT_(open_dataset(fn[0]))
-        return open_mfdataset(fn, concat_dim=_dimT, combine='nested')
+        axnm = _dimT(open_dataset(fn[0], **kwargs))
+        return open_mfdataset(fn, concat_dim=axnm, combine='nested', **kwargs)
     else:
-        return open_dataset(fn)
+        return open_dataset(fn, **kwargs)
 
 
-def xdimT_(da):
-    for i in da.dims:
-        if i.lower() in ('time', 'date', 'datetime'):
-            return i
+#-- ccxx ----------------------------------------------------------------------
+#-- _dim ----------------------------------------------------------------------
+nmXs = ('x-coord', 'x_coord', 'x coord', 'lon', 'west_east')
+nmYs = ('y-coord', 'y_coord', 'y coord', 'lat', 'south_north')
+nmZs = ('z-coord', 'z_coord', 'z coord', 'hgt', 'height', 'bottom_top',
+                'press')
+nmTs = ('date', 'time', 'day', 'month', 'season', 'year', 'second', 'minute')
 
-def xdimX_(da):
-    for i in da.dims:
-        if any(ii in i.lower() for ii in ('x', 'lon', 'west_east')):
-            return i
+def _dimT(da):
+    return _dim(da, 'T')
 
+def _dimX(da):
+    return _dim(da, 'X')
 
-def xdimY_(da):
-    for i in da.dims:
-        if any(ii in i.lower() for ii in ('y', 'lat', 'south_north')):
-            return i
+def _dimY(da):
+    return _dim(da, 'Y')
 
+def _dimZ(da):
+    return _dim(da, 'Z')
 
-def xdimZ_(da):
-    for i in da.dims:
-        if any(ii in i.lower() for ii in ('z', 'hgt', 'height', 'bottom_top',
-                                          'press')):
-            return i
+def _dim(da, axis):
+    if isinstance(axis, str):
+        if len(axis) == 1 and axis.upper() in 'TXYZ':
+            nms = eval(f"nm{axis.upper()}s")
+            for i in da.dims:
+                if (any(ii in i.lower() for ii in nms)
+                    or i.upper() == axis.upper()):
+                    return i
+        else:
+            return tuple(_dim(da, i) for i in axis)
+    else:
+        return da.dims[rpt_(axis, da.ndim)]
 
-
-def xax_(da, axis):
+#-- _dimc ---------------------------------------------------------------------
+def _dimc(da, axis):
     if not isinstance(da, XDA):
         emsg = "'da' is not instance of 'xarray.DataArray'"
         raise TypeError(emsg)
-    _dim = eval(f"xdim{axis}_(da)")
-    return da.dims.index(_dim) if _dim else None
+    if isinstance(axis, str):
+        if len(axis) == 1:
+            if axis.upper() in 'TXYZ':
+                o = eval(f"_dim{axis.upper()}(da)")
+                return getattr(da, o) if o and hasattr(da, o) else None
+            else:
+                return None
+        else:
+            return tuple(_dimc(da, i) for i in axis)
+    else:
+        axis = rpt_(axis, da.ndim)
+        return tryattr_(da, da.dims[axis])
 
+def _dimcT(da):
+    return _dimc(da, 'T')
 
-xaxT_ = lambda da: xax_(da, 'T')
+def _dimcX(da):
+    return _dimc(da, 'X')
 
-xaxX_ = lambda da: xax_(da, 'X')
+def _dimcY(da):
+    return _dimc(da, 'Y')
 
-xaxY_ = lambda da: xax_(da, 'Y')
+def _dimcZ(da):
+    return _dimc(da, 'Z')
 
-xaxZ_ = lambda da: xax_(da, 'Z')
+def _dimcXY(da):
+    return (_dimcX(da), _dimcY(da))
+
+#-- _ax -----------------------------------------------------------------------
+def _ax(da, axis):
+    if not isinstance(da, XDA):
+        msg = "'da' is not instance of 'xarray.DataArray'"
+        raise TypeError(msg)
+    if not isinstance(axis, str):
+        msg = "'axis' should be a string"
+        raise TypeError(msg)
+    if len(axis) == 1:
+        o = eval(f"_dim{axis.upper()}(da)")
+        return da.dims.index(o) if o else None
+    elif axis in da.coords:
+        cdims = getattr(da, axis).dims
+        return tuple(da.dims.index(i) for i in cdims)
+
+def _axT(da):
+    return _ax(da, 'T')
+
+def _axX(da):
+    return _ax(da, 'X')
+
+def _axY(da):
+    return _ax(da, 'Y')
+
+def _axZ(da):
+    return _ax(da, 'Z')
+
+def _axXY(da):
+    axXY = [_axX(da), _axY(da)]
+    if all(i is not None for i in axXY):
+        return tuple(sorted(axXY))
+
+def _isyx(da):
+    if _axXY(da) is not None:
+        return _axY(da) < _axX(da)
+    else:
+        msg = f"Dimension 'X' or 'Y' does not exist in DataArray {da.name!r}"
+        raise Exception(msg)
+
+#-- _guessbnds ----------------------------------------------------------------
+def _guessXYZT(coord):
+    for i in 'XYZT':
+        nms = eval(f"nm{i}s")
+        if any(ii in coord.name.lower() for ii in nms):
+            return i
+
+def _guessLOA(coord):
+    for i in ('lo', 'la'):
+        if i in coord.name.lower():
+            return i
+
+def _guessbnds(da, coord, **kwargs):
+    hgKA = dict(loa=_guessLOA(coord))
+    hgKA.update(kwargs)
+    data = coord.data
+    data = data.compute() if hasattr(data, 'compute') else data
+    if coord.ndim == 1:
+        lb = half_grid_(data, side='l', **hgKA)
+        rb = half_grid_(data, side='r', **hgKA)
+    else:
+        _xyzt = _guessXYZT(coord)
+        ax = _ax(da, _xyzt)
+        axs = _ax(da, coord.name)
+        axincoord = axs.index(ax)
+        lb = half_grid_(data, side='l', axis=axincoord, **hgKA)
+        rb = half_grid_(data, side='r', axis=axincoord, **hgKA)
+    return np.stack((lb, rb), axis=-1)
+
+#-- _loa ----------------------------------------------------------------------
+def _loa(da):
+    def _f(s):
+        for i in da.coords:
+            if s in i.lower():
+                return getattr(da, i)
+    return (_f('lon'), _f('lat'))
+
+def _axLOA(da):
+    _f = lambda x: tuple(da.dims.index(i) for i in x.dims)
+    return tuple(_f(i) for i in _loa(da))
+
+def _loa_pnts(da):
+    def _f(s):
+        for i in da.coords:
+            if s in i.lower():
+                data = getattr(da, i).data
+                return data.compute() if hasattr(data, 'compute') else data
+    return (_f('lon'), _f('lat'))
+
+def _loa_bnds(da):
+    def _f(s):
+        for i in da.coords:
+            if s in i.lower():
+                return _guessbnds(da, getattr(da, i), loa=s[:2])
+    return (_f('lon'), _f('lat'))
+
+def _loa_pnts_2d(da):
+    lo, la = _loa_pnts(da)
+    if lo is None or la is None:
+        emsg = f"DataArray {da.name!r} must have longitude/latidute coords!"
+        raise Exception(emsg)
+    return loa2d_(lo, la, isYX=_isyx(da))
+
+#-- _msk ----------------------------------------------------------------------
+def _ind_clim(da, **kwargs):
+    shp = da.shape
+    cnms = [i for i in da.coords]
+    _d = lambda x: _ax(da, x)
+    _tmp = [_d(k) for k in kwargs.keys() if k in cnms]
+    uds = [tuple(i) for i in ss_fr_sl_(_tmp)]
+    def _r(_k):                                                                # right bounds for longitude
+        if ('lo' in _k and
+            any(i in getattr(da, _k).units) for i in ('degree', 'radian')):
+            return 360
+    def _f(_k, ud):                                                            # derive ind for a given coord and an unique dimension
+        _shp = tuple(shp[i] for i in ud)
+        udD = {ii:i for i, ii in enumerate(ud)}
+        _coord = getattr(da, _k)
+        _dims = _d(_k)
+        ax = tuple(udD[i] for i in _dims)
+        r_ = _r(_coord)
+        b0, b1 = np.moveaxis(_guessbnds(da, _coord), -1, 0)
+        _b0 = ind_inRange_(b0, *kwargs[_k], r_=r_)
+        _b1 = ind_inRange_(b1, *kwargs[_k], r_=r_)
+        return robust_bc2_(
+                np.logical_and(_b0, _b1),
+                _shp,
+                ax,
+                )
+    def _ff(ud):                                                               # derive ind for an unique dimension
+        udd = {i:ii for i, ii in enumerate(ud)}
+        _ma = ()
+        for k in kwargs.keys():
+            if k in cnms and any(i in ud for i in _d(k)):
+                _ma += (_f(k, ud),)
+        _ind = bA2ind_(np.logical_and.reduce(_ma))
+        o = ()
+        for i, ii in zip(ud, _ind):
+            if not(isinstance(ii, slice) and ii == slice(None)):
+                o += (i, ii)
+        return o
+    o = ()                                                                     # collect ind along each dimension, to be passed to extract_
+    for i in uds:
+        o += _ff(i)
+    return o
+
+def _omsk_clim(da, to_ind=False, **kwargs):
+    shp = da.shape
+    cnms = [i for i in da.coords]
+    _d = lambda x: _ax(da, x)
+    def _r(_k):
+        if ('lo' in _k and
+            any(i in getattr(da, _k).units) for i in ('degree', 'radian')):
+            return 360
+    def _f1(_k):
+        _coord = getattr(da, _k)
+        _dims = _d(_k)
+        r_ = _r(_coord)
+        b0, b1 = np.moveaxis(_guessbnds(da, _coord), -1, 0)
+        _b0 = ind_inRange_(b0, *kwargs[_k], r_=r_)
+        _b1 = ind_inRange_(b1, *kwargs[_k], r_=r_)
+        return robust_bc2_(
+                np.logical_and(_b0, _b1),
+                shp,
+                _dims,
+                )
+    booL = []
+    for k in kwargs.keys():
+        if k in cnms:
+            booL.append(_f1(k))
+    o = np.logical_and.reduce(booL)
+    return bA2ind_(o) if to_ind else o
+
+def _ind_loalim(da, longitude=None, latitude=None):
+#-- in_loalim_(lo, la, shp, axXY=None, lolim=None, lalim=None, isYX=True)
+    return in_loalim_(*_loa_pnts(da),
+                      da.shape,
+                      axXY=_axXY(da),
+                      lolim=longitude,
+                      lalim=latitude,
+                      isYX=_isyx(da),
+                      )
+
+def _ind_poly(da, poly, **kwArgs):
+    x, y = _loa_pnts_2d(da)
+    ind = in_polygons_(poly, np.vstack((x.ravel(), y.ravel())).T, **kwArgs)
+    ind = robust_bc2_(ind.reshape(x.shape), da.shape, _axXY(da))
+    return ind
+
+def _where_not_msk(da, omsk, **kwargs):
+    return da.where(omsk, **kwargs)
+
+#-- _extract_byAxes -----------------------------------------------------------
+def _extract_byAxes(da, axis, sl_i, *vArg):
+    """
+    ... extract by providing selection along axis/axes ...
+
+    Args:
+          da: parent XDA
+        axis: along which for the extraction; axis name acceptable
+        sl_i: slice, list, or 1d array of selected indices along axis
+        vArg: any pairs of (axis, sl_i)
+
+    useful info:
+        >>> help(inds_ss_)
+    """
+
+    if len(vArg)%2 != 0:
+        raise Exception("arguments {!r} not interpretable!".format(vArg))
+
+    if len(vArg) > 0:
+        ax, sl = list(vArg[::2]), list(vArg[1::2])
+        ax.insert(0, axis)
+        sl.insert(0, sl_i)
+    else:
+        ax = [axis]
+        sl = [sl_i]
+
+    if isinstance(da, XDA):
+        ax = [_ax(da, i)[0] if isinstance(i, str) else i for i in ax]
+    return extract_(da, *(i for ii in zip(ax, sl) for i in ii), fancy=False)
+
+#-- _aw -----------------------------------------------------------------------
+def _area_weights(da, normalize=False, rEARTH=6367470):
+    """
+    ... revised iris.analysis.cartography.area_weights to ignore lon/lat in
+        auxcoords ...
+    """
+    lon, lat = _loa(da)                                                        # Get the lon and lat coords and axes
+    if any(i is None for i in (lon, lat)):
+        msg = "Cannot get latitude/longitude coordinates from CUBE {!r}!"
+        raise ValueError(msg.format(da.name))
+    if lon.ndim == lat.ndim == 1:                                              # axes for the weights to be broadcasted
+        axes = (_axY(da), _axX(da))
+    elif lon.shape == lat.shape:
+        axes = _ax(da, lat.name)
+
+    for coord in (lat, lon):                                                   # check units
+        if not any(i in coord.units.lower() for i in ('degree', 'radian')):
+            msg = ("Units of degrees or radians required, coordinate "
+                   f"{coord.name()!r} has units: {coord.units.name!r}")
+            raise ValueError(msg)
+
+    lob, lab = _loa_bnds(da)                                                   # Create 2D weights from bounds
+    lob = cUnit(lon.units).convert(lob, 'radian')
+    lab = cUnit(lat.units).convert(lab, 'radian')
+    ll_weights = aw_loa_bnds_(lob, lab, rEARTH=rEARTH)                         # Use the geographical area as the weight for each cell
+
+    if normalize:                                                              # Normalize the weights if necessary
+        ll_weights /= ll_weights.sum()
+
+                                                                               # Now we create an array of weights for each cell. This process will
+                                                                               # handle adding the required extra dimensions and also take care of
+                                                                               # the order of dimensions.
+    return robust_bc2_(ll_weights, da.shape, axes=axes)
+
+#-- _rg -----------------------------------------------------------------------
+def _rg_func(da, func, rg=None, **funcD):
+    tmp = _where_not_msk(da, _ind_loalim(da, **rg)) if rg else da.copy()
+    return tmp.reduce(func, dim=_dim(da, 'XY'), **funcD)
+
+def _rg_mean(da, rg=None, **funcD):
+    aw = XDA(data=_area_weights(da),
+             coords=da.coords,
+             dims=da.dims,
+             name='weights')
+    tmp = _where_not_msk(da, _ind_loalim(da, **rg)) if rg else da.copy()
+    tmp = tmp.weighted(aw)
+    return tmp.mean(dim=_dim(da, 'XY'), **funcD)
+
+def _poly_func(da, poly, func, inpolyKA={}, **funcD):
+    tmp = _where_not_msk(da, _ind_poly(da, poly, **inpolyKA))
+    return tmp.reduce(func, dim=_dim(da, 'XY'), **funcD)
+
+def _poly_mean(da, poly, inpolyKA={}, **funcD):
+    aw = XDA(data=_area_weights(da),
+             coords=da.coords,
+             dims=da.dims,
+             name='weights')
+    tmp = _where_not_msk(da, _ind_poly(da, poly, **inpolyKA))
+    tmp = tmp.weighted(aw)
+    return tmp.mean(dim=_dim(da, 'XY'), **funcD)
+
+#-- ccxx ----------------------------------------------------------------------
 
 
 def xresample_(ds, ff='D', nn=None):
@@ -141,15 +445,15 @@ def xresample_(ds, ff='D', nn=None):
         ds: xarray.Dataset with a 'date' dim
         ff: target frequency
             'D': daily, equal to xres_daily_
-            'M': monthly, equal to xres_monthly_
+            'MS': monthly, equal to xres_monthly_
             'QS-DEC':, seasonal, equal to xres_seasonal_
-            'A': annual, equal to xres_annual_
+            'YS': annual, equal to xres_annual_
             and others
         nn: min number of samples for output valid values
     output:
         same type as ds
     '''
-    tD = {xdimT_(da): ff}
+    tD = {_dimT(ds): ff}
     dsr = ds.resample(**tD)
     o = dsr.mean()
     if nn:
@@ -163,7 +467,7 @@ def xres_daily_(ds, nn=None):
 
 
 def xres_monthly_(ds, nn=None):
-    return xresample_(ds, ff='M', nn=nn)
+    return xresample_(ds, ff='MS', nn=nn)
 
 
 def xres_seasonal_(ds, nn=None):
@@ -171,7 +475,7 @@ def xres_seasonal_(ds, nn=None):
 
 
 def xres_annual_(ds, nn=None):
-    return xresample_(ds, ff='A', nn=nn)
+    return xresample_(ds, ff='YS', nn=nn)
 
 
 def xmean_(da, dim=None, add_bounds=False, **kwargs):
@@ -207,7 +511,7 @@ def xmeanT_(da,
             keepdims=True,
             **kwargs):
     kwargs.update(dict(keep_attrs=keep_attrs, keepdims=keepdims))
-    return xmean_(da, dim=xdimT_(da), add_bounds=add_bounds, **kwargs)
+    return xmean_(da, dim=_dimT(da), add_bounds=add_bounds, **kwargs)
 
 
 def xu2u_(da, other, **kwargs):
@@ -219,10 +523,12 @@ def xu2u_(da, other, **kwargs):
         data_old = da.data
         if hasattr(da.data, 'compute'):
             import dask.array as _da
-            da.data = _da.map_blocks(u2u_, data_old, uold, other, **kwargs)
+            data = _da.map_blocks(u2u_, data_old, uold, other, **kwargs)
         else:
-            da.data = u2u_(data_old, uold, other, **kwargs)
-        da.attrs.update(dict(units=other))
+            data = u2u_(data_old, uold, other, **kwargs)
+        da_new = da.copy(data=data)
+        da_new.attrs.update(dict(units=other))
+        return da_new
 
 
 #------------------------------------------------------------------------------- gsod
@@ -381,12 +687,20 @@ def gsod_(csvfiles=None,
         raise Exception("You may know more what is going wrong than me!!!")
 
 
-#------------------------------------------------------------------------------- wrf, e5
+#------------------------------------------------------------------------------- wrf, e5, modis
 def ds_(fn):
     if not isIter_(fn):
         return DS(fn)
     else:
         return [ds_(i) for i in fn]
+
+
+def ds_close_(ds):
+    if isinstance(ds, DS):
+        ds.close()
+    elif isIter_(ds):
+        for i in ds:
+            ds_close_(i)
 
 
 def getvar_(fn, var):
@@ -400,110 +714,71 @@ def getvar_(fn, var):
     return getvar(arg0, var, timeidx=ALL_TIMES, method='cat')
 
 
-def hgt_wrf_(fn):
-    return getvar_(fn, 'HGT_M')
-
-
-def lu_wrf_(fn):
-    return getvar_(fn, 'LU_INDEX')
-
-
-def hgt_e5_(fn):
-    o = xds_(fn).z
-    o.data /= 9.81
-    o.attrs.update(dict(units='m', long_name='height', standard_name='height'))
-    return o
-
-
-def tp_wrf_(fn0, fn1, ind=np.s_[:]):
-    ds0 = ds_(fn0)
-    ds1 = ds_(fn1)
-    o = getvar_(ds1, 'RAINC')[ind]
-    o.data += getvar_(ds1, 'RAINNC')[ind].data
-    o.data += getvar_(ds1, 'RAINSH')[ind].data
-    o.data -= getvar_(ds0, 'RAINC')[ind].data
-    o.data -= getvar_(ds0, 'RAINNC')[ind].data
-    o.data -= getvar_(ds0, 'RAINSH')[ind].data
-    o.name = 'tp'
-    o.attrs.update(dict(description='total precipitation'))
-    return o
-
-
-def tp_e5_(fn, ind=np.s_[:]):
-    o = xds_(fn).tp[ind]
-    xu2u_(o, 'mm')
-    return o
-
-
-def s2a_(tp):
-    axnm = xdimT_(tp)
-    if axnm is None:
-        raise Exception("dimension of time not found!")
-    grp = tp[axnm].dt.month.copy(data=m2sm_(tp[axnm].dt.month, 'jja'))
-    og = tp.groupby(grp)
-    o0, o1 = og[True].mean(dim=axnm), og[False].mean(dim=axnm)
-    o = o0 * 92 / (o0 * 92 + o1 * 273)
-    o.name = 's2a'
-    o.attrs.update(dict(units='1',
-                        description='ratio of jja to annual precipitation'))
-    return o
-
-
-def swtp_(tp):
-    axnm = xdimT_(tp)
-    if axnm is None:
-        raise Exception("dimension of time not found!")
-    grp = tp[axnm].dt.month.copy(data=m2sm_(tp[axnm].dt.month, 'jja'))
-    og = tp.groupby(grp)
-    return (og[True].mean(dim=axnm), og[False].mean(dim=axnm))
-
-
-def rho_wrf_(ds, ind=np.s_[:]):
-    Gas_C = 287.04
-    o = getvar_(ds, 'p')[ind]
-    o.data /= (Gas_C * getvar_(ds, 'tv')[ind].data)
-    o.name = 'rho'
-    o.attrs.update(dict(units='kg m-3', description='air density'))
-    return o
-
-
-def zstag_wrf_(ds, ind=np.s_[:]):
-    o = getvar_(ds, 'PH')[ind]
-    o.data += getvar_(ds, 'PHB')[ind].data
-    o.data /= 9.81
-    o.name = 'height'
-    o.attrs.update(dict(units='m', description='height over msl'))
-    return o
-
-
-def wvt_wrf_(*zrhoqv):
-    z, rho, q = zrhoqv[:3]
-    v = zrhoqv[3] if len(zrhoqv)>3 else None
-    axZ = axZ_(z)
-    _z = (z[ind_s_(z.ndim, axZ, np.s_[1:])] -
-          z[ind_s_(z.ndim, axZ, np.s_[:-1])])
-    o = q.copy()
-    o.data *= _z.data*rho.data if v is None else _z.data*rho.data*v.data
-    o = o.integrate(o.dims[axZ])
-    o.name = ''.join(
-        ['z', '' if v is None else v.name.lower(), 'rho', q.name.lower()])
-    o.attrs.update(dict(
-        units=sqzUnit_(' '.join(
-            [z.units, rho.units, q.units, '' if v is None else v.units])),
-        description="vertical integral of{0}{2}{1}".format(
-            ' ' if v is None else (' easterward ' if 'u' in v.name else
-                                   ' northward '),
-            '' if v is None else ' flux',
-            ' '.join(q.description.lower().split(' ')[:2]),
-            )))
-    return o
-
-
-def loa_(da):
-    try:
-        return (da.XLONG, da.XLAT) # wrfout
-    except:
-        try:
-            return (da.XLONG_M, da.XLAT_M) # wrf geo
-        except:
-            return (da.longitude, da.latitude) # era5
+def cmg_read_(fn, rg={}):
+    def _lo(ds):
+        n = ds.x.size
+        dx = 180/n
+        b0 = tryattr_(ds, 'WESTHBOUNDINGCOORDINATE')
+        b0 = b0 if b0 else -180
+        return XDA(
+                data=np.linspace(dx + b0, b0 + 360 - dx, n),
+                name='lon',
+                dims=('x',),
+                attrs=dict(long_name='longitude', units='degree'),
+                )
+    def _la(ds):
+        n = ds.y.size
+        dy = 90/n
+        b0 = tryattr_(ds, 'SOUTHBOUNDINGCOORDINATE')
+        b0 = b0 if b0 else -90
+        return XDA(
+                data=np.linspace(b0 + 180 - dy, dy + b0, n),
+                name='lay',
+                dims=('y',),
+                attrs=dict(long_name='latitude', units='degree'),
+                )
+    def _time(fn):
+        import re
+        tmp = re.findall("A\d{7}", fn)
+        if tmp:
+            yyyydoy = tmp[0][1:]
+            data = np.array([np.datetime64(doy2date_(yyyydoy))],
+                            dtype='datetime64[ns]')
+            return XDA(
+                    data=data,
+                    name='time',
+                    dims=('time',),
+                    )
+    if isinstance(fn, str):
+        ds = xds_(fn, engine='rasterio')
+        KA = dict(
+                lon=_lo(ds),
+                lat=_la(ds),
+                )
+        if _time(fn):
+            KA.update(dict(time=_time(fn)))
+        #o = ds.expand_dims(dim="time", axis=0)
+        o = ds.drop('band')
+        o = o.rename_dims(dict(band='time'))
+        o = o.assign_coords(**KA)
+        if rg:
+            iselKA={}
+            if 'longitude' in rg:
+                iselKA.update(dict(
+                    x=np.where(ind_inRange_(
+                        o.lon.data,
+                        *rg['longitude'],
+                        r_=360,
+                        ))[0]
+                    ))
+            if 'latitude' in rg:
+                iselKA.update(dict(
+                    y=np.where(ind_inRange_(
+                        o.lat.data,
+                        *rg['latitude'],
+                        ))[0]
+                    ))
+            o = o.isel(**iselKA)
+        return o
+    elif isIter_(fn, xi=str):
+        return xmerge([cmg_read_(i, rg=rg) for i in fn])

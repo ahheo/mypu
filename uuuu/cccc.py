@@ -3,16 +3,12 @@
 >-------------------------functions operating on cube-------------------------<
 >--#########################################################################--<
 * alng_axis_            : apply along axis
-* area_weights_         : modified area_weights from iris
 * ax_fn_mp_             : apply along axis mp
-* axT_cube              : dimension of time axis of cube
 * concat_cube_          : robust cube concatenator
 * corr_cube_            : modified version of iris.analysis.stats.pearsonr
 * cubesv_               : save cube to nc with dim_t unlimitted
 * curl_cube             : curl of (ucube, vcube)
 * cut_as_cube           : cut into the domain of another cube
-* dim_axis_cube         : dimension of a specified axis of cube
-* dimc_axis_cube        : dimcoord of a specified axis of cube
 * div_cube              : divergence of (ucube, vcube)
 * doy_f_cube            : f for each doy
 * en_iqr_               : ensemble interquartile range
@@ -22,7 +18,6 @@
 * en_mxn_               : ensemble spread
 * en_mm_cubeL_          : make ensemble cube for multimodels
 * en_rip_               : ensemble (rxixpx) cube
-* extract_byAxes_       : extraction with help of inds_ss_ (for cube)
 * extract_month_cube    : extraction cube of month
 * extract_period_cube   : extraction cube within [y0, y1]
 * extract_season_cube   : extraction cube of season
@@ -31,14 +26,8 @@
 * getGridAL_cube        : grid_land_area
 * getGridA_cube         : grid_area from file or calc with basic assumption
 * get_gwl_y0_           : first year of 30-year window of global warming level
-* get_loa_              : longitude/latitude coords of cube
-* get_loa_dim_          : modified _get_lon_lat_coords from iris
-* get_loa_pts_2d_       : 2d longitude/latitude points (from coord or meshed)
-* get_xy_dim_           : horizontal spatial dim coords
-* get_xyd_cube          : cube axes of xy dims
 * guessBnds_cube        : bounds of dims points
 * initAnnualCube_       : initiate annual cube
-* inpolygons_cube       : points if inside polygons
 * intersection_         : cube intersection with lon/lat range
 * isMyIter_             : Iterable with items as cube/ndarray
 * kde_cube              : kernal distribution estimation over all cube data
@@ -108,16 +97,12 @@ from .uuuu import *
 
 __all__ = [
         'alng_axis_',
-        'area_weights_',
         'ax_fn_mp_',
-        'axT_cube',
         'concat_cube_',
         'corr_cube_',
         'cubesv_',
         'curl_cube',
         'cut_as_cube',
-        'dim_axis_cube',
-        'dimc_axis_cube',
         'div_cube',
         'doy_f_cube',
         'en_iqr_',
@@ -127,7 +112,6 @@ __all__ = [
         'en_mxn_',
         'en_mm_cubeL_',
         'en_rip_',
-        'extract_byAxes_',
         'extract_month_cube',
         'extract_period_cube',
         'extract_season_cube',
@@ -136,14 +120,8 @@ __all__ = [
         'getGridAL_cube',
         'getGridA_cube',
         'get_gwl_y0_',
-        'get_loa_',
-        'get_loa_dim_',
-        'get_loa_pts_2d_',
-        'get_xy_dim_',
-        'get_xyd_cube',
         'guessBnds_cube',
         'initAnnualCube_',
-        'inpolygons_cube',
         'intersection_',
         'isMyIter_',
         'kde_cube',
@@ -228,38 +206,6 @@ def slice_back_(cnd, c1d, ii, axis):
         cnd[ind_shape_i_(cnd.shape, ii, axis)] = c1d
 
 
-def extract_byAxes_(cnd, axis, sl_i, *vArg):
-    """
-    ... extract CUBE/ARRAY by providing selection along axis/axes ...
-
-    Args:
-         cnd: parent CUBE/ARRAY
-        axis: along which for the extraction; axis name acceptable
-        sl_i: slice, list, or 1d array of selected indices along axis
-        vArg: any pairs of (axis, sl_i)
-
-    useful info:
-        >>> help(inds_ss_)
-    """
-
-    if len(vArg)%2 != 0:
-        raise Exception("arguments {!r} not interpretable!".format(vArg))
-
-    if len(vArg) > 0:
-        ax, sl = list(vArg[::2]), list(vArg[1::2])
-        ax.insert(0, axis)
-        sl.insert(0, sl_i)
-    else:
-        ax = [axis]
-        sl = [sl_i]
-
-    if isinstance(cnd, _Cube):
-        ax = [cnd.coord_dims(i)[0] if isinstance(i, (str, _iDimC)) else i
-              for i in ax]
-
-    return extract_(cnd, *(i for ii in zip(ax, sl) for i in ii))
-
-
 def isMyIter_(x):
     """
     ... Iterable with items as CUBE/ARRAY ...
@@ -293,34 +239,6 @@ def pst_(
             pst_(i, name=name, units=units, var_name=var_name, attrU=attrU)
 
 
-def axT_cube(c):
-    """
-    ... dimension of time axis in CUBE ...
-    """
-    return dim_axis_cube(c, 'T')
-
-
-def dim_axis_cube(c, axis):
-    """
-    ... dimension of axis in CUBE ...
-    """
-    try:
-        dim_coord = c.coord(axis=axis, dim_coords=True)
-        return c.coord_dims(dim_coord)[0]
-    except:
-        return None
-
-
-def dimc_axis_cube(c, axis):
-    """
-    ... dimension of axis in CUBE ...
-    """
-    try:
-        return c.coord(axis=axis, dim_coords=True)
-    except:
-        return None
-
-
 def nTslice_cube(c, n):
     """
     ... slices along a no-time axis ...
@@ -330,7 +248,7 @@ def nTslice_cube(c, n):
         n: maximum size of a slice
     """
     nd = c.ndim
-    tc = dimc_axis_cube(c, 'T')
+    tc = _dimcT(c)
     ax_nT = [i for i in range(nd) if i not in c.coord_dims(tc)]
     shp = tuple(c.shape[i] for i in ax_nT)
     if np.prod(shp) < n:
@@ -340,7 +258,7 @@ def nTslice_cube(c, n):
         oo = [c]
         for ax, step in ss:
             oo = nli_(
-                    [[extract_byAxes_(o, ax, np.s_[i:(i + step)])
+                    [[_extract_byAxes(o, ax, np.s_[i:(i + step)])
                       for i in range(0, c.shape[ax], step)] for o in oo]
                     )
         return _CubeList(oo)
@@ -365,7 +283,7 @@ def unique_yrs_of_cube(
                     emsg = "'mmm' must not be None for adding coord {!r}!"
                     raise ValueError(emsg.format(coord))
             else:
-                _ica.add_year(_c, dimc_axis_cube(_c, 'T'), name=coord)
+                _ica.add_year(_c, _dimcT(_c), name=coord)
         return np.unique(_c.coord(coord).points)
     elif isIter_(c, xi=_Cube):
         return [unique_yrs_of_cube(i) for i in c]
@@ -389,7 +307,7 @@ def y0y1_of_cube(
                     emsg = "'mmm' must not be None for adding coord {!r}!"
                     raise ValueError(emsg.format(coord))
             else:
-                _ica.add_year(_c, dimc_axis_cube(_c, 'T'), name=coord)
+                _ica.add_year(_c, _dimcT(_c), name=coord)
         elif mmm and 'season' in coord:
             _c.remove_coord(coord)
             seasonyr_cube(_c, mmm, name=coord)
@@ -435,7 +353,7 @@ def extract_period_cube(
                 emsg = "'mmm' must not be None for adding coord {!r}!"
                 raise ValueError(emsg.format(coord))
         else:
-            _ica.add_year(_c, dimc_axis_cube(_c, 'T'), name=coord)
+            _ica.add_year(_c, _dimcT(_c), name=coord)
     elif mmm and 'season' in coord:
         _c.remove_coord(coord)
         seasonyr_cube(_c, mmm, name=coord)
@@ -463,7 +381,7 @@ def extract_win_cube(c, d, r=15):
     """
     _c = c.copy()
     try:
-        _ica.add_day_of_year(_c, dimc_axis_cube(_c, 'T'), name='doy')
+        _ica.add_day_of_year(_c, _dimcT(_c), name='doy')
     except ValueError:
         pass
     x1, x2 = rpt_(d - r, 365), rpt_(d + r, 365)
@@ -491,11 +409,11 @@ def extract_season_cube(c, mmm, valid_season=True):
         else:
             _c = c.copy() # to avoid changing metadata of original CUBE
             try:
-                _ica.add_season_membership(_c, dimc_axis_cube(_c, 'T'), mmm,
+                _ica.add_season_membership(_c, _dimcT(_c), mmm,
                                            name=mmm)
             except ValueError:
                 _c.remove_coord(mmm)
-                _ica.add_season_membership(_c, dimc_axis_cube(_c, 'T'), mmm,
+                _ica.add_season_membership(_c, _dimcT(_c), mmm,
                                            name=mmm)
             _c.coord(mmm).points = _c.coord(mmm).points.astype(np.int32)
             o = _c.extract(iris.Constraint(**{mmm: True}))
@@ -521,7 +439,7 @@ def extract_month_cube(c, Mmm):
     """
     _c = c.copy()
     try:
-        _ica.add_month(_c, dimc_axis_cube(_c, 'T'), name='month')
+        _ica.add_month(_c, _dimcT(_c), name='month')
     except ValueError:
         pass
     return _c.extract(iris.Constraint(month=Mmm[:3].capitalize()))
@@ -578,96 +496,6 @@ def minmax_cube_(c, rg=None, p=None):
     return (np.nanmin(mms), np.nanmax(mms))
 
 
-def get_xyd_cube(c, guess_lst2=True):
-    """
-    ... CUBE axes of xy dims  ...
-    ... see help(get_xy_dim_) ...
-    """
-    xc, yc = get_xy_dim_(c)
-    if xc is None:
-        if guess_lst2:
-            warnings.warn("missing 'x' or 'y' dimcoord in input CUBE; "
-                          "guess last two as xyd.")
-            return tuple(rpt_([-2, -1], c.ndim))
-        else:
-            raise Exception("missing 'x' or 'y' dimcoord in input CUBE!")
-    else:
-        xyd = list(c.coord_dims(yc) + c.coord_dims(xc))
-        xyd.sort()
-        return tuple(xyd)
-
-
-def _get_xy_lim(c, longitude=None, latitude=None):
-    xc, yc = get_xy_dim_(c)
-    if xc is None or yc is None:
-        raise Exception("missing 'x' or 'y' dimcoord in input CUBE!")
-    lo, la = c.coord('longitude'), c.coord('latitude')
-    if longitude is None:
-        longitude = [lo.points.min(), lo.points.max()]
-    if latitude is None:
-        latitude = [la.points.min(), la.points.max()]
-    if xc == lo and yc == la:
-        xyl = {xc.name(): longitude, yc.name(): latitude}
-    else:
-        xd = c.coord_dims(lo).index(
-                np.intersect1d(c.coord_dims(lo), c.coord_dims(xc))
-                )
-        yd = c.coord_dims(lo).index(
-                np.intersect1d(c.coord_dims(lo), c.coord_dims(yc))
-                )
-        a_ = ind_inRange_(lo.points, *longitude, r_=360)
-        b_ = ind_inRange_(la.points, *latitude)
-        c_ = np.logical_and(a_, b_)
-        xi, yi = np.where(np.any(c_, axis=yd)), np.where(np.any(c_, axis=xd))
-        xv, yv = xc.points[xi], yc.points[yi]
-        if np.any(np.diff(xi[0]) != 1):
-            if xc.circular and xc.units.modulus:
-                rb = xc.points[np.where(np.diff(xi[0]) != 1)[0] + 1]
-                xv = rpt_(xv, rb, rb - xc.units.modulus)
-            else:
-                raise Exception("limits given outside data!")
-        xll = [xv.min(), xv.max()]
-        yll = [yv.min(), yv.max()]
-        xyl = {xc.name(): xll, yc.name(): yll}
-    if xc.units.modulus:
-        return xyl
-    else:
-        return (xc.name(), ind_inRange_(xc.points, *xll),
-                yc.name(), ind_inRange_(yc.points, *yll))
-
-
-def _get_ind_lolalim(c, longitude=None, latitude=None):
-    xyd = get_xyd_cube(c)
-    lo, la = get_loa_pts_2d_(c)
-    if longitude is None:
-        longitude = [lo.min(), lo.max()]
-    if latitude is None:
-        latitude = [la.min(), la.max()]
-    a_ = ind_inRange_(lo, *longitude, r_=360)
-    b_ = ind_inRange_(la, *latitude)
-    c_ = np.logical_and(a_, b_)
-    return robust_bc2_(c_, c.shape, xyd)
-
-
-def intersection_(c, longitude=None, latitude=None):
-    """
-    ... intersection by range of longitude/latitude ...
-    """
-    kwArgs=dict()
-    if longitude is not None:
-        kwArgs.update(dict(longitude=longitude))
-    if latitude is not None:
-        kwArgs.update(dict(latitude=latitude))
-    if c.coord('latitude').ndim == 1:
-        return c.intersection(**kwArgs)
-    else:
-        xyl = _get_xy_lim(c, **kwArgs)
-        if isinstance(xyl, dict):
-            return c.intersection(**xyl)
-        else:
-            return extract_byAxes_(c, *xyl)
-
-
 def seasonyr_cube(c, mmm, name='seasonyr'):
     """
     ... add season_year auxcoords to CUBE especially regarding ...
@@ -682,12 +510,12 @@ def seasonyr_cube(c, mmm, name='seasonyr'):
         else:
             raise Exception(f"unknown seasons {mmm!r}!")
         try:
-            _ica.add_season_year(c, dimc_axis_cube(c, 'T'),
+            _ica.add_season_year(c, _dimcT(c),
                                  name=name,
                                  seasons=seasons)
         except ValueError:
             c.remove_coord(name)
-            _ica.add_season_year(c, dimc_axis_cube(c, 'T'),
+            _ica.add_season_year(c, _dimcT(c),
                                  name=name,
                                  seasons=seasons)
     elif isIter_(c, xi=(_Cube, _CubeList, tuple, list)):
@@ -701,13 +529,13 @@ def yr_doy_cube(c):
     """
     if isinstance(c, _Cube):
         try:
-            _ica.add_year(c, dimc_axis_cube(c, 'T'), name='year')
+            _ica.add_year(c, _dimcT(c), name='year')
         except ValueError:
             pass
         else:
             c.coord('year').attributes = {}
         try:
-            _ica.add_day_of_year(c, dimc_axis_cube(c, 'T'), name='doy')
+            _ica.add_day_of_year(c, _dimcT(c), name='doy')
         except ValueError:
             pass
         else:
@@ -778,147 +606,18 @@ def guessBnds_cube(c):
             pass
 
 
-def get_loa_dim_(c):
-    """
-    ... get lon and lat coords (dimcoords only) ...
-    """
-    lat_coords = [coord for coord in c.dim_coords
-                  if "latitude" in coord.name()]
-    lon_coords = [coord for coord in c.dim_coords
-                  if "longitude" in coord.name()]
-    if len(lat_coords) > 1 or len(lon_coords) > 1:
-        raise ValueError(
-            "Calling `get_loa_dim_` with multiple lat or lon coords"
-            " is currently disallowed")
-    lat_coord = lat_coords[0]
-    lon_coord = lon_coords[0]
-    return (lon_coord, lat_coord)
-
-
-def get_xy_dim_(c, guess_lst2=True):
-    """
-    ... horizontal spatial DimCoords                     ...
-    ... return last 2 DimCoords if failed in 'XY' method ...
-    """
-    try:
-        return (c.coord(axis='X', dim_coords=True),
-                c.coord(axis='Y', dim_coords=True))
-    except:
-        if guess_lst2 and c.ndim > 1:
-            return(c.coord(dimensions=rpt_(-1, c.ndim), dim_coords=True),
-                   c.coord(dimensions=rpt_(-2, c.ndim), dim_coords=True))
-        else:
-            return (None, None)
-
-
-def get_loa_(c):
-    """
-    ... longitude/latitude coords of CUBE ...
-    """
-    try:
-        lo, la = c.coord('longitude'), c.coord('latitude')
-        lo.convert_units('degrees')
-        la.convert_units('degrees')
-        return (lo, la)
-    except:
-        return (None, None)
-
-
-def area_weights_(c, normalize=False):
-    """
-    ... revised iris.analysis.cartography.area_weights to ignore lon/lat in
-        auxcoords ...
-    """
-    from iris.analysis.cartography import (
-            DEFAULT_SPHERICAL_EARTH_RADIUS,
-            DEFAULT_SPHERICAL_EARTH_RADIUS_UNIT,
-            _quadrant_area
-            )
-    # Get the radius of the earth
-    cs = c.coord_system("CoordSystem")
-    if isinstance(cs, iris.coord_systems.GeogCS):
-        if cs.inverse_flattening != 0.0:
-            warnings.warn("Assuming spherical earth from ellipsoid.")
-        radius_of_earth = cs.semi_major_axis
-    elif (isinstance(cs, iris.coord_systems.RotatedGeogCS) and
-            (cs.ellipsoid is not None)):
-        if cs.ellipsoid.inverse_flattening != 0.0:
-            warnings.warn("Assuming spherical earth from ellipsoid.")
-        radius_of_earth = cs.ellipsoid.semi_major_axis
-    else:
-        warnings.warn("Using DEFAULT_SPHERICAL_EARTH_RADIUS.")
-        radius_of_earth = DEFAULT_SPHERICAL_EARTH_RADIUS
-
-    # Get the lon and lat coords and axes
-    try:
-        lon, lat = get_loa_dim_(c)
-    except IndexError:
-        emsg = "Cannot get latitude/longitude coordinates from CUBE {!r}!"
-        raise ValueError(emsg.format(c.name()))
-
-    if lat.ndim > 1:
-        raise iris.exceptions.CoordinateMultiDimError(lat)
-    if lon.ndim > 1:
-        raise iris.exceptions.CoordinateMultiDimError(lon)
-
-    lat_dim = c.coord_dims(lat)
-    lat_dim = lat_dim[0] if lat_dim else None
-
-    lon_dim = c.coord_dims(lon)
-    lon_dim = lon_dim[0] if lon_dim else None
-
-    if not (lat.has_bounds() and lon.has_bounds()):
-        msg = ("Coordinates {!r} and {!r} must have bounds to determine "
-               "the area weights.".format(lat.name(), lon.name()))
-        raise ValueError(msg)
-
-    # Convert from degrees to radians
-    lat = lat.copy()
-    lon = lon.copy()
-
-    for coord in (lat, lon):
-        if coord.units in (cUnit('degree'), cUnit('radian')):
-            coord.convert_units('radian')
-        else:
-            msg = ("Units of degrees or radians required, coordinate "
-                   f"{coord.name()!r} has units: {coord.units.name!r}")
-            raise ValueError(msg)
-    # Create 2D weights from bounds.
-    # Use the geographical area as the weight for each cell
-    ll_weights = _quadrant_area(lat.bounds, lon.bounds, radius_of_earth)
-
-    # Normalize the weights if necessary.
-    if normalize:
-        ll_weights /= ll_weights.sum()
-
-    # Now we create an array of weights for each cell. This process will
-    # handle adding the required extra dimensions and also take care of
-    # the order of dimensions.
-    broadcast_dims = [x for x in (lat_dim, lon_dim) if x is not None]
-    wshape = []
-    for idim, dim in zip((0, 1), (lat_dim, lon_dim)):
-        if dim is not None:
-            wshape.append(ll_weights.shape[idim])
-    ll_weights = ll_weights.reshape(wshape)
-    broad_weights = iris.util.broadcast_to_shape(
-            ll_weights, c.shape, broadcast_dims
-            )
-
-    return broad_weights
-
-
 def cut_as_cube(c0, c1):
     """
     ... cut CUBE1 with the domain of CUBE0 ...
     """
-    xc1, yc1 = get_xy_dim_(c1)
-    xc0, yc0 = get_xy_dim_(c0)
+    xc1, yc1 = _dimcXY(c1)
+    xc0, yc0 = _dimcXY(c0)
     xn, yn = xc1.name(), yc1.name()
     xe = np.min(np.abs(np.diff(xc1.points))) / 2
     ye = np.min(np.abs(np.diff(yc1.points))) / 2
     x0, x1 = np.min(xc0.points), np.max(xc0.points)
     y0, y1 = np.min(yc0.points), np.max(yc0.points)
-    return extract_byAxes_(
+    return _extract_byAxes(
             c1,
             xn,
             ind_inRange_(xc1.points, x0 - xe, x1 + xe, side=0),
@@ -959,14 +658,14 @@ def getGridA_cube(c, areacella=None):
             return getGridA_cube(c)
         ga = cut_as_cube(c, ga_).data
         try:
-            ga = robust_bc2_(ga, c.shape, get_xyd_cube(c))
+            ga = robust_bc2_(ga, c.shape, _axXY(c))
             return ga
         except:
             return getGridA_cube(c)
     else:
         try:
             guessBnds_cube(c)
-            ga = area_weights_(c)
+            ga = _area_weights(c)
         except:
             ga = None
         return ga
@@ -983,7 +682,7 @@ def getGridAL_cube(c, sftlf=None, areacella=None):
         if sf_sqz.ndim != 2:
             raise Exception('NOT 2D area-c!')
         sf = cut_as_cube(c, sf_sqz).data
-        sf = robust_bc2_(sf, c.shape, get_xyd_cube(c))
+        sf = robust_bc2_(sf, c.shape, _axXY(c))
         if ga is None:
             return np.ones(c.shape) * sf / 100
         else:
@@ -995,19 +694,19 @@ def getGridAL_cube(c, sftlf=None, areacella=None):
 def rgF_cube(c, func, rg=None, **funcD):
     #warnings.filterwarnings("ignore", category=UserWarning)
     if rg:
-        ind = _get_ind_lolalim(c, **rg)
+        ind = _ind_loalim(c, **rg)
         tmp = iris.util.mask_cube(c.copy(), ~ind)
     else:
         tmp = c
-    xc, yc = get_xy_dim_(tmp)
+    xc, yc = _dimcXY(tmp)
     return tmp.collapsed([xc, yc], func, **funcD)
 
 
 def rgF_poly_cube(c, poly, func, inpolyKA={}, **funcD):
     #warnings.filterwarnings("ignore", category=UserWarning)
-    ind = inpolygons_cube(c, poly, **inpolyKA)
+    ind = _ind_poly(c, poly, **inpolyKA)
     tmp = iris.util.mask_cube(c.copy(), ~ind)
-    xc, yc = get_xy_dim_(tmp)
+    xc, yc = _dimcXY(tmp)
     return tmp.collapsed([xc, yc], func, **funcD)
 
 
@@ -1016,13 +715,13 @@ def rgCount_cube(c, sftlf=None, areacella=None, rg=None, func=None):
     if func is None:
         func = lambda values: values > 0
         warnings.warn("'func' not provided; count values greater than 0.")
-    xyd = get_xyd_cube(c)
+    xyd = _axXY(c)
     ga0 = getGridA_cube(c, areacella)
     ga0 = np.ones(c.shape) if ga0 is None else ga0
     ga = getGridAL_cube(c, sftlf, areacella)
     ga = np.ones(c.shape) if ga is None else ga
     if rg:
-        ind = _get_ind_lolalim(c, **rg)
+        ind = _ind_loalim(c, **rg)
         ga0 = ga0 * ind
         ga = ga * ind
     umsk = ~c.data.mask if (np.ma.isMaskedArray(c.data) and
@@ -1031,7 +730,7 @@ def rgCount_cube(c, sftlf=None, areacella=None, rg=None, func=None):
     if np.any(sum0 == 0):
         raise Exception("empty slice encountered.")
     data = np.sum(func(c.data) * ga, axis=xyd) * 100 / sum0
-    xc, yc = get_xy_dim_(c)
+    xc, yc = _dimcXY(c)
     tmp = c.collapsed([xc, yc], iris.analysis.MEAN)
     return tmp.copy(data)
 
@@ -1042,19 +741,19 @@ def rgCount_poly_cube(c, poly, sftlf=None, areacella=None, func=None,
     if func is None:
         func = lambda values: values > 0
         warnings.warn("'func' not provided; count values greater than 0.")
-    xyd = get_xyd_cube(c)
+    xyd = _axXY(c)
     ga0 = getGridA_cube(c, areacella)
     ga0 = np.ones(c.shape) if ga0 is None else ga0
     ga = getGridAL_cube(c, sftlf, areacella)
     ga = np.ones(c.shape) if ga is None else ga
-    ind = inpolygons_cube(c, poly, **kwArgs)
+    ind = _ind_poly(c, poly, **kwArgs)
     ga0 = ga0 * ind
     ga = ga * ind
     sum0 = np.sum(ga0, axis=xyd)
     if np.any(sum0 == 0):
         raise Exception("empty slice encountered.")
     data = np.sum(func(c.data) * ga, axis=xyd) * 100 / sum0
-    xc, yc = get_xy_dim_(c)
+    xc, yc = _dimcXY(c)
     tmp = c.collapsed([xc, yc], iris.analysis.MEAN)
     return tmp.copy(data)
 
@@ -1066,12 +765,12 @@ def rgMean_cube(c, sftlf=None, areacella=None, rg=None):
     #warnings.filterwarnings("ignore", category=UserWarning)
     ga = getGridAL_cube(c, sftlf, areacella)
     if rg:
-        ind = _get_ind_lolalim(c, **rg)
+        ind = _ind_loalim(c, **rg)
         if ga is None:
             ga = ind * np.ones(ind.shape)
         else:
             ga = ga * ind
-    xc, yc = get_xy_dim_(c)
+    xc, yc = _dimcXY(c)
     if ga is None:
         return c.collapsed([xc, yc], iris.analysis.MEAN)
     else:
@@ -1088,7 +787,7 @@ def get_gwl_y0_(c, gwl, pref=[1861, 1890]):
     """
     _c = pSTAT_cube(c if c.ndim == 1 else rgMean_cube(c), 'year')
     tref = extract_period_cube(_c, *pref)
-    tref = tref.collapsed(dimc_axis_cube(tref, 'T'), iris.analysis.MEAN).data
+    tref = tref.collapsed(_dimcT(tref), iris.analysis.MEAN).data
 
     def _G_tR(G, tR):
         if not isIter_(G):
@@ -1111,60 +810,13 @@ def get_gwl_y0_(c, gwl, pref=[1861, 1890]):
         return o
 
 
-def _inpolygons(poly, points, **kwArgs):
-    if not isIter_(poly):
-        ind = poly.contains_points(points, **kwArgs)
-    elif len(poly) < 2:
-        ind = poly[0].contains_points(points, **kwArgs)
-    else:
-        inds = [i.contains_points(points, **kwArgs) for i in poly]
-        ind = np.logical_or.reduce(inds)
-    return ind
-
-
-def _isyx(c):
-    xc, yc = get_xy_dim_(c)
-    if xc is None:
-        raise Exception("input CUBE missing 'x' or 'y' coord")
-    xcD, ycD = c.coord_dims(xc)[0], c.coord_dims(yc)[0]
-    return ycD < xcD
-
-
-def get_loa_pts_2d_(c):
-    """
-    ... 2d longitude/latitude points (from coord or meshed) ...
-    """
-    lo_, la_ = get_loa_(c)
-    if lo_ is None or la_ is None:
-        raise Exception("input CUBE must have longitude/latidute coords!")
-    yx_ = _isyx(c)
-    if lo_.ndim != 2:
-        if yx_:
-            x, y = np.meshgrid(lo_.points, la_.points)
-        else:
-            y, x = np.meshgrid(la_.points, lo_.points)
-    else:
-        if yx_:
-            x, y = lo_.points, la_.points
-        else:
-            x, y = lo_.points.T, la_.points.T
-    return (x, y)
-
-
-def inpolygons_cube(c, poly, **kwArgs):
-    x, y = get_loa_pts_2d_(c)
-    ind = _inpolygons(poly, np.vstack((x.ravel(), y.ravel())).T, **kwArgs)
-    ind = robust_bc2_(ind.reshape(x.shape), c.shape, get_xyd_cube(c))
-    return ind
-
-
 def maskNaN_cube(c):
     ind = np.isnan(c.data)
     iris.util.mask_cube(c, ind, in_place=True)
 
 
 def maskPOLY_cube(c, poly, masked_out=True, **kwArgs):
-    ind = inpolygons_cube(c, poly, **kwArgs)
+    ind = _ind_poly(c, poly, **kwArgs)
     ind = ~ind if masked_out else ind
     iris.util.mask_cube(c, ind, in_place=True)
 
@@ -1172,8 +824,8 @@ def maskPOLY_cube(c, poly, masked_out=True, **kwArgs):
 def rgMean_poly_cube(c, poly, sftlf=None, areacella=None, **kwArgs):
     #warnings.filterwarnings("ignore", category=UserWarning)
     ga = getGridAL_cube(c, sftlf, areacella)
-    ind = inpolygons_cube(c, poly, **kwArgs)
-    xc, yc = get_xy_dim_(c)
+    ind = _ind_poly(c, poly, **kwArgs)
+    xc, yc = _dimcXY(c)
     if ga is None:
         ga = ind * np.ones(ind.shape)
     else:
@@ -1268,12 +920,12 @@ def _unify_coord_attrs(cL, coord_names=None):
 def _unify_time_units(cL):
     CLD0 = 'proleptic_gregorian'
     CLD = 'gregorian'
-    clds = [dimc_axis_cube(c, 'T').units.calendar for c in cL]
+    clds = [_dimcT(c).units.calendar for c in cL]
     if len(ouniqL_(clds)) > 1:
         for c in cL:
-            ctu = dimc_axis_cube(c, 'T').units
+            ctu = _dimcT(c).units
             if ctu.calendar == CLD0:
-                dimc_axis_cube(c, 'T').units = cUnit(ctu.origin, CLD)
+                _dimcT(c).units = cUnit(ctu.origin, CLD)
     iris.util.unify_time_units(cL)
 
 
@@ -1692,7 +1344,7 @@ def initAnnualCube_(
     mmm = 'jfmamjjasond' if mmm == 'j-d' else mmm
     y0, y1 = y0y1
     ny = y1 - y0 + 1
-    c = extract_byAxes_(c0, axT_cube(c0), np.s_[:ny])
+    c = _extract_byAxes(c0, _axT(c0), np.s_[:ny])
     rm_t_aux_cube(c)
 
     def _mm01():
@@ -1720,7 +1372,7 @@ def initAnnualCube_(
     else:
         c.data = np.zeros(c.shape)
     ##coord('time')
-    ct = dimc_axis_cube(c, 'T')
+    ct = _dimcT(c)
     ct.units = TSC_(1900)
     m0, m1, y0_, y0__ = _mm01()
     y0_h = [datetime(i, m0, 1) for i in range(y0_, y0_ + ny)]
@@ -1776,7 +1428,7 @@ def pSTAT_cube(
         raise Exception(ef0.format(stat))
 
     s4 = ('djf', 'mam', 'jja', 'son')
-    _axT = dimc_axis_cube(c, 'T').name()
+    _axT = _dimcT(c).name()
 
     d_y = dict(year=('year',),
                season=('season', 'seasonyr'),
@@ -1877,12 +1529,12 @@ def pSTAT_cube(
             tmp = c.aggregated_by(dff, getattr(iris.analysis, stat),
                                   **stat_opts)
             if isSeason_(mmm) and not ismono_(mmmN_(mmm)):
-                tmp = extract_byAxes_(tmp, _axT, np.s_[1:-1])
+                tmp = _extract_byAxes(tmp, _axT, np.s_[1:-1])
         else:
             tmp = c.aggregated_by(dff, getattr(iris.analysis, stat),
                                   **stat_opts)
             if x == 'season' and valid_season:
-                tmp = extract_byAxes_(tmp, _axT, np.s_[1:-1])
+                tmp = _extract_byAxes(tmp, _axT, np.s_[1:-1])
         rm_t_aux_cube(tmp, keep=dff)
         return tmp
 
@@ -1971,7 +1623,7 @@ def cubesv_(c, filename,
     """
     if isinstance(c, _Cube):
         #repair_lccs_(c) # execute before if necessary
-        udm = dimc_axis_cube(c, 'T')
+        udm = _dimcT(c)
         iris.save(c, filename,
                   netcdf_format=netcdf_format,
                   local_keys=local_keys,
@@ -2004,11 +1656,11 @@ def _ri1d(c1d, v):
 
 
 def ri_cube(c, v, nmin=10):
-    ax_t = axT_cube(c)
+    ax_t = _axT(c)
     if ax_t is None or c.shape[ax_t] < nmin:
         emsg = "too few data for estimation!"
         raise Exception(emsg)
-    o = extract_byAxes_(c, ax_t, 0)
+    o = _extract_byAxes(c, ax_t, 0)
     rm_sc_cube(o)
     pst_(o, 'recurrence interval', units='year')
     ax_fn_mp_(c, ax, _ri1d, o, v)
@@ -2016,11 +1668,11 @@ def ri_cube(c, v, nmin=10):
 
 
 def nearest_point_cube(c, longitude, latitude):
-    x, y = get_loa_pts_2d_(c)
+    x, y = _loa_pnts_2d(c)
     d_ = ind_shape_i_(x.shape,
                       np.argmin(haversine_(longitude, latitude, x, y)),
                       axis=None)
-    xyd = get_xyd_cube(c)
+    xyd = _axXY(c)
     ind = list(np.s_[:,] * c.ndim)
     for i, ii in zip(xyd, d_):
         ind[i] = ii
@@ -2028,11 +1680,11 @@ def nearest_point_cube(c, longitude, latitude):
 
 
 def nine_points_cube(c, longitude, latitude):
-    x, y = get_loa_pts_2d_(c)
+    x, y = _loa_pnts_2d(c)
     d_ = ind_shape_i_(x.shape,
                       np.argmin(haversine_(longitude, latitude, x, y)),
                       axis=None)
-    xyd = get_xyd_cube(c)
+    xyd = _axXY(c)
     ind_ = np.arange(-1, 2, dtype=np.int32)
     ind = list(np.s_[:,] * c.ndim)
     wmsg = ("Causious that center point may be given outside (or at the "
@@ -2086,7 +1738,7 @@ def doy_f_cube(c,
              pp: print process status
     """
 
-    ax_t = axT_cube(c)
+    ax_t = _axT(c)
     yr_doy_cube(c)
     doy_data = c.coord('doy').points
 
@@ -2096,8 +1748,8 @@ def doy_f_cube(c,
     doy = np.arange(1, 367, dtype=np.int32)
 
     if out is None:
-        out = extract_byAxes_(c, ax_t, doy - 1)
-        cT = dimc_axis_cube(out, 'T')
+        out = _extract_byAxes(c, ax_t, doy - 1)
+        cT = _dimcT(out)
         #select 2000 as it is a leap year...
         cT.units = TSC_(1900)
         d0 = cT.units.date2num(datetime(2000, 1, 1))
@@ -2116,7 +1768,7 @@ def doy_f_cube(c,
         ind = ind_s_(c.ndim, ax_t, indw)
         f_kArgs.update(dict(axis=ax_t, keepdims=True))
         tmp = func(data_[ind], *fA_, **fK_)
-        out.data[ind_s_(out.ndim, axT_cube(out), doy == i)] = tmp
+        out.data[ind_s_(out.ndim, _axT(out), doy == i)] = tmp
         if pp:
             ll_('{}'.format(i), t0=t0, _p=True)
 
@@ -2126,7 +1778,7 @@ def doy_f_cube(c,
 def pcorr_cube(x, y, z, **cck):
     assert x.shape == y.shape == z.shape
     if 'corr_coords' not in cck:
-        cck.update(dict(corr_coords=dimc_axis_cube(x, 'T').name()))
+        cck.update(dict(corr_coords=_dimT(x)))
     if 'common_mask' not in cck:
         cck.update(dict(common_mask=True))
     from iris.analysis.maths import apply_ufunc as _apply
@@ -2375,8 +2027,8 @@ def div_cube(uc, vc):
     ... divergence of ucube and v cube ...
     """
     from iris.analysis.cartography import DEFAULT_SPHERICAL_EARTH_RADIUS as _r
-    ucxy = get_xy_dim_(uc, guess_lst2=False)
-    vcxy = get_xy_dim_(vc, guess_lst2=False)
+    ucxy = _dimcXY(uc)
+    vcxy = _dimcXY(vc)
     amsg = "xycoords error!"
     assert ucxy == vcxy and all(i is not None for i in ucxy), amsg
     ucx, ucy = ucxy
@@ -2413,8 +2065,8 @@ def curl_cube(uc, vc):
     ... curl of ucube and v cube ...
     """
     from iris.analysis.cartography import DEFAULT_SPHERICAL_EARTH_RADIUS as _r
-    ucxy = get_xy_dim_(uc, guess_lst2=False)
-    vcxy = get_xy_dim_(vc, guess_lst2=False)
+    ucxy = _dimcXY(uc)
+    vcxy = _dimcXY(vc)
     amsg = "xycoords error!"
     assert ucxy == vcxy and all(i is not None for i in ucxy), amsg
     ucx, ucy = ucxy
@@ -2451,10 +2103,433 @@ def smth_cube(c, m=9, n=9):
     ... smoothing 2d cube ...
     """
     amsg = "xycoords error!"
-    ucxy = get_xy_dim_(c, guess_lst2=False)
+    ucxy = _dimcXY(c)
     o = []
     for _sl in c.slices(ucxy):
         data = rMEAN2d_(_sl.data, m, n, mode='same')
         _sl.data = data
         o.append(_sl)
     return _CubeList(o).merge_cube()
+
+
+def _any2dim(c, **kwargs):
+    _ind = _ind_clim(c, **kwargs)
+    axs, inds = _ind[0::2], _ind[1::2]
+    def _isok(ind):
+        o = True
+        if not isinstance(ind, slice):
+            o &= np.all(np.diff(ind) == 1)
+        return o
+    def _allisok():
+        return all(_isok(i) for i in inds)
+
+    def _r(coord):
+        if tryattr_(coord, 'circular'):
+            if tryattr_(coord.units, 'modulus'):
+                return coord.units.modulus
+
+    def _f(ax, ind):
+        coord = _dimc(c, ax)
+        msg = f"no dim_coord found along dimension {ax!r}"
+        if coord is None:
+            raise Exception(msg)
+        value = coord.points[ind]
+        if not _isok(ind):
+            if _r(coord) and ind[-1] == coord.points.size - 1:
+                rb = coord.points[ind[np.where(np.diff(ind)!=1)[0]]]
+                rb = _r(coord) if rb < 0  else _r(coord) / 2
+                value = rpt_(value, rb, rb - _r(coord))
+            else:
+                msg = (f"coord {coord.name()} is not circular, "
+                       "or units.modulus is missing, "
+                       "or too many slices for the given index!")
+                raise Exception(msg)
+        lim = [value.min(), value.max()]
+        return {coord.name(): lim}
+
+    if _allisok():
+        return _ind
+    else:
+        o = {}
+        for ax, ind in zip(axs, inds):
+            o.update(_f(ax, ind))
+        return o
+
+
+def intersection_(c, **kwargs):
+    """
+    ... intersection by range of coords ...
+    """
+    xxx = _any2dim(c, **kwargs)
+    if isinstance(xxx, dict):
+        return c.intersection(**xxx)
+    else:
+        return _extract_byAxes(c, *xxx)
+
+
+#-- ccxx ----------------------------------------------------------------------
+#-- _dimc ---------------------------------------------------------------------
+nmXs = ('x-coord', 'x_coord', 'x coord', 'lon', 'west_east')
+nmYs = ('y-coord', 'y_coord', 'y coord', 'lat', 'south_north')
+nmZs = ('z-coord', 'z_coord', 'z coord', 'hgt', 'height', 'bottom_top',
+        'press')
+nmTs = ('date', 'time', 'day', 'month', 'season', 'year', 'second', 'minute')
+
+def _dimcT(c):
+    return c.coord(axis='T', dim_coords=True)
+
+def _dimcX(c):
+    return _dimc(c, 'X')
+
+def _dimcY(c):
+    return _dimc(c, 'Y')
+
+def _dimcZ(c):
+    return _dimc(c, 'Z')
+
+def _dimcXY(c):
+    return (_dimcX(c), _dimcY(c))
+
+def _dimc(c, axis):
+    if isinstance(axis, str):
+        if len(axis) == 1:
+            if axis.upper() == 'T':
+                return _dimcT(c)
+            elif axis.upper() in 'XYZ':
+                nms = eval(f"nm{axis.upper()}s")
+                for i in c.dim_coords:
+                    if (any(ii in i.name().lower() for ii in nms)
+                        or i.name().upper() == axis.upper()):
+                        return i
+            else:
+                return None
+        else:
+            return tuple(_dimc(c, i) for i in axis)
+    else:
+        try:
+            return c.coord(dimensions=rpt_(axis, c.ndim), dim_coords=True)
+        except:
+            return None
+
+#-- _dim ----------------------------------------------------------------------
+def _dim(c, axis):
+    o = eval(f"_dimc(c, {axis!r})")
+    return o.name() if o else None
+
+def _dimT(c):
+    return _dim(c, 'T')
+
+def _dimX(c):
+    return _dim(c, 'X')
+
+def _dimY(c):
+    return _dim(c, 'Y')
+
+def _dimZ(c):
+    return _dim(c, 'Z')
+
+#-- _ax -----------------------------------------------------------------------
+def _ax(c, axis):
+    if len(axis) == 1:
+        o = eval(f"_dimc{axis.upper()}(c)")
+        return c.coord_dims(o)[0] if o else None
+    else:
+        return (c.coord_dims(axis) if axis in (i.name() for i in c.coords())
+                else None)
+
+def _axT(c):
+    return _ax(c, 'T')
+
+def _axX(c):
+    return _ax(c, 'X')
+
+def _axY(c):
+    return _ax(c, 'Y')
+
+def _axZ(c):
+    return _ax(c, 'Z')
+
+def _axXY(c): #_axXY
+    axXY = [_axX(c), _axY(c)]
+    if all(i is not None for i in axXY):
+        return tuple(sorted(axXY))
+
+def _isyx(c):
+    if _axXY(c) is not None:
+        return _axY(c) < _axX(c)
+    else:
+        msg = f"Dimension 'X' or 'Y' does not exist in Cube {c.name()!r}"
+        raise Exception(msg)
+
+#-- _guessbnds ----------------------------------------------------------------
+def _guessXYZT(coord):
+    for i in 'XYZT':
+        nms = eval(f"nm{i}s")
+        if any(ii in coord.name().lower() for ii in nms):
+            return i
+
+def _guessLOA(coord):
+    for i in ('lo', 'la'):
+        if i in coord.name().lower():
+            return i
+
+def _guessbnds(c, coord, **kwargs):
+    hgKA = dict(loa=_guessLOA(coord))
+    hgKA.update(kwargs)
+    if coord.ndim == 1:
+        coord.guess_bounds()
+        return coord.bounds
+    else:
+        _xyzt = _guessXYZT(coord)
+        ax = _ax(c, _xyzt)
+        axs = c.coord_dims(coord)
+        axincoord = axs.index(ax)
+        lb = half_grid_(coord.points, side='l', axis=axincoord, **hgKA)
+        rb = half_grid_(coord.points, side='r', axis=axincoord, **hgKA)
+        return np.stack((lb, rb), axis=-1)
+
+#-- _loa ----------------------------------------------------------------------
+def _loa(c):
+    def _f(s):
+        for i in c.coords():
+            if s in i.name().lower():
+                return i
+    return (_f('lon'), _f('lat'))
+
+def _axLOA(c):
+    return tuple(c.coord_dims(i) for i in _loa(c) if i)
+
+def _loa_pnts(c):
+    def _f(s):
+        for i in c.coords():
+            if s in i.name().lower():
+                return i.points
+    return (_f('lon'), _f('lat'))
+
+def _loa_bnds(c):
+    def _f(s):
+        for i in c.coords():
+            if s in i.name().lower():
+                if i.has_bounds():
+                    return i.bounds
+                else:
+                    return _guessbnds(c, i, loa=s[:2])
+    return (_f('lon'), _f('lat'))
+
+def _loa_pnts_2d(c):
+    lo, la = _loa_pnts(c)
+    if lo is None or la is None:
+        emsg = f"Cube {c.name()!r} must have longitude/latidute coords!"
+        raise Exception(emsg)
+    return loa2d_(lo, la, isYX=_isyx(c))
+
+#-- _msk ----------------------------------------------------------------------
+def _ind_clim(c, **kwargs):
+    shp = c.shape
+    cnms = [i.name() for i in c.coords()]
+    _tmp = [c.coord_dims(k) for k in kwargs.keys() if k in cnms]
+    uds = [tuple(i) for i in ss_fr_sl_(_tmp)]
+    def _d(_k):
+        return c.coord_dims(_k)
+    def _r(coord):                                                             # right bounds for coord that is circular
+        if tryattr_(coord, 'circular'):
+            if tryattr_(coord.units, 'modulus'):
+                return coord.units.modulus
+    def _f(_k, ud):                                                            # derive ind for a given coord and an unique dimension
+        _shp = tuple(shp[i] for i in ud)
+        udD = {ii:i for i, ii in enumerate(ud)}
+        _coord = c.coord(_k)
+        _dims = _d(_k)
+        ax = tuple(udD[i] for i in _dims)
+        r_ = _r(_coord)
+        if _coord.has_bounds():
+            b0, b1 = _coord.bounds.T
+        else:
+            b0, b1 = np.moveaxis(_guessbnds(c, _coord), -1, 0)
+        _b0 = ind_inRange_(b0, *kwargs[_k], r_=r_)
+        _b1 = ind_inRange_(b1, *kwargs[_k], r_=r_)
+        return robust_bc2_(
+                np.logical_and(_b0, _b1),
+                _shp,
+                ax,
+                )
+    def _ff(ud):                                                               # derive ind for an unique dimension
+        udd = {i:ii for i, ii in enumerate(ud)}
+        _ma = ()
+        for k in kwargs.keys():
+            if k in cnms and any(i in ud for i in _d(k)):
+                _ma += (_f(k, ud),)
+        _ind = bA2ind_(np.logical_and.reduce(_ma))
+        o = ()
+        for i, ii in zip(ud, _ind):
+            if not(isinstance(ii, slice) and ii == slice(None)):
+                o += (i, ii)
+        return o
+    o = ()                                                                     # collect ind along each dimension, to be passed to extract_
+    for i in uds:
+        o += _ff(i)
+    return o
+
+def _omsk_clim(c, to_ind=False, **kwargs):
+    shp = c.shape
+    def _r(coord):
+        if tryattr_(coord, 'circular'):
+            if tryattr_(coord.units, 'modulus'):
+                return coord.units.modulus
+    def _f1(_k):
+        _coord = c.coord(_k)
+        _dims = c.coord_dims(_coord)
+        r_ = _r(_coord)
+        if _coord.has_bounds():
+            b0, b1 = _coord.bounds.T
+        else:
+            b0, b1 = np.moveaxis(_guessbnds(c, _coord), -1, 0)
+        _b0 = ind_inRange_(b0, *kwargs[_k], r_=r_)
+        _b1 = ind_inRange_(b1, *kwargs[_k], r_=r_)
+        return robust_bc2_(
+                np.logical_and(_b0, _b1),
+                shp,
+                _dims,
+                )
+    booL = []
+    for k in kwargs.keys():
+        if k in (i.name() for i in c.coords()):
+            booL.append(_f1(k))
+    o = np.logical_and.reduce(booL)
+    return bA2ind_(o) if to_ind else o
+
+def _ind_loalim(c, longitude=None, latitude=None):
+#-- in_loalim_(lo, la, shp, axXY=None, lolim=None, lalim=None, isYX=True)
+    return in_loalim_(*_loa_pnts(c),
+                      c.shape,
+                      axXY=_axXY(c),
+                      lolim=longitude,
+                      lalim=latitude,
+                      isYX=_isyx(c),
+                      )
+
+def _ind_poly(c, poly, **kwArgs):
+    x, y = _loa_pnts_2d(c)
+    ind = in_polygons_(poly, np.vstack((x.ravel(), y.ravel())).T, **kwArgs)
+    ind = robust_bc2_(ind.reshape(x.shape), c.shape, _axXY(c))
+    return ind
+
+def _where_not_msk(c, omsk, **kwargs):
+    return iris.util.mask_cube(c, ~omsk, in_place=False, **kwargs)
+
+#-- _extract ------------------------------------------------------------------
+def _extract_byAxes(c, axis, sl_i, *vArg):
+    """
+    ... extract CUBE/ARRAY by providing selection along axis/axes ...
+
+    Args:
+           c: parent CUBE/ARRAY
+        axis: along which for the extraction; axis name acceptable
+        sl_i: slice, list, or 1d array of selected indices along axis
+        vArg: any pairs of (axis, sl_i)
+
+    useful info:
+        >>> help(inds_ss_)
+    """
+
+    if len(vArg)%2 != 0:
+        raise Exception("arguments {!r} not interpretable!".format(vArg))
+
+    if len(vArg) > 0:
+        ax, sl = list(vArg[::2]), list(vArg[1::2])
+        ax.insert(0, axis)
+        sl.insert(0, sl_i)
+    else:
+        ax = [axis]
+        sl = [sl_i]
+
+    if isinstance(c, _Cube):
+        ax = [cnd.coord_dims(i)[0] if isinstance(i, (str, _iDimC)) else i
+              for i in ax]
+
+    return extract_(c, *(i for ii in zip(ax, sl) for i in ii), fancy=False)
+
+#-- _aw -----------------------------------------------------------------------
+def _rEARTH(c):
+    """
+    ... Get the radius of the earth ...
+    """
+    from iris.analysis.cartography import DEFAULT_SPHERICAL_EARTH_RADIUS
+    cs = c.coord_system("CoordSystem")
+    if isinstance(cs, iris.coord_systems.GeogCS):
+        if cs.inverse_flattening != 0.0:
+            warnings.warn("Assuming spherical earth from ellipsoid.")
+        radius_of_earth = cs.semi_major_axis
+    elif (isinstance(cs, iris.coord_systems.RotatedGeogCS) and
+            (cs.ellipsoid is not None)):
+        if cs.ellipsoid.inverse_flattening != 0.0:
+            warnings.warn("Assuming spherical earth from ellipsoid.")
+        radius_of_earth = cs.ellipsoid.semi_major_axis
+    else:
+        warnings.warn("Using DEFAULT_SPHERICAL_EARTH_RADIUS.")
+        radius_of_earth = DEFAULT_SPHERICAL_EARTH_RADIUS
+    return radius_of_earth
+
+def _area_weights(c, normalize=False):
+    """
+    ... revised iris.analysis.cartography.area_weights to ignore lon/lat in
+        auxcoords ...
+    """
+    radius_of_earth = _rEARTH(c)                                               # Get the radius of the earth
+
+    lon, lat = _loa(c)                                                         # Get the lon and lat coords and axes
+    if any(i is None for i in (lon, lat)):
+        msg = "Cannot get latitude/longitude coordinates from CUBE {!r}!"
+        raise ValueError(msg.format(c.name()))
+
+    if lon.ndim == lat.ndim == 1:                                              # axes for the weights to be broadcasted
+        axes = (_axY(c), _axX(c))
+    elif lon.shape == lat.shape:
+        axes = c.coord_dims(lat)
+
+    for coord in (lat, lon):                                                   # check units
+        if coord.units not in (cUnit('degree'), cUnit('radian')):
+            msg = ("Units of degrees or radians required, coordinate "
+                   f"{coord.name()!r} has units: {coord.units.name!r}")
+            raise ValueError(msg)
+
+    lob, lab = _loa_bnds(c)                                                    # Create 2D weights from bounds
+    lob = cUnit(lon.units).convert(lob, 'radian')
+    lab = cUnit(lat.units).convert(lab, 'radian')
+    ll_weights = aw_loa_bnds_(lob, lab, radius_of_earth)                       # Use the geographical area as the weight for each cell
+
+    if normalize:                                                              # Normalize the weights if necessary
+        ll_weights /= ll_weights.sum()
+
+                                                                               # Now we create an array of weights for each cell. This process will
+                                                                               # handle adding the required extra dimensions and also take care of
+                                                                               # the order of dimensions.
+    return robust_bc2_(ll_weights, c.shape, axes=axes)
+
+#-- _rg -----------------------------------------------------------------------
+def _rg_func(c, func, rg=None, **funcD):
+    if rg:
+        ind = _ind_loalim(c, **rg)
+        tmp = _where_not_msk(c, ind)
+    else:
+        tmp = c.copy()
+    return tmp.collapsed(_dimcXY(tmp), func, **funcD)
+
+def _rg_mean(c, rg=None, **funcD):
+    aw = _area_weights(c)
+    return _rg_func(c, iris.analysis.MEAN, rg=rg, weights=aw, **funcD)
+
+def _poly_func(c, poly, func, inpolyKA={}, **funcD):
+    ind = _ind_poly(c, poly, **inpolyKA)
+    tmp = _where_not_msk(c, ind)
+    return tmp.collapsed(_dimcXY(tmp), func, **funcD)
+
+def _poly_mean(c, poly, inpolyKA={}, **funcD):
+    aw = _area_weights(c)
+    return _poly_func(c, poly, iris.analysis.MEAN,
+                      inpolyKA=inpolyKA,
+                      weights=aw,
+                      **funcD,
+                      )
+
+#-- ccxx ----------------------------------------------------------------------
