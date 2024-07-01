@@ -21,7 +21,7 @@ from shapely.geometry import Polygon
 from scipy.sparse import csc_matrix, diags
 
 from .ffff import *
-from .cccc import (ax_fn_mp_, extract_byAxes_, _loa, _dimcXY,
+from .cccc import (ax_fn_mp_, _extract_byAxes, _loa, _dimcXY,
                    half_grid_, _isyx)
 
 
@@ -239,7 +239,7 @@ def _bnds_2d_3d(bounds, shp, ax):
 
 def _bnds_2p_4p(bounds, isX_=True):
     p4_ = (0, 0, 1, 1) if isX_ else (0, 1, 1, 0)
-    return np.stack([extract_byAxes_(bounds, -1, i) for i in p4_],
+    return np.stack([_extract_byAxes(bounds, -1, i) for i in p4_],
                     axis=-1)
 
 

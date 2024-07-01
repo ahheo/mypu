@@ -14,7 +14,7 @@ Date last modified: 11.11.2020
 from xarray import (open_dataset, open_mfdataset, merge as xmerge,
                     Dataset as XDS, DataArray as XDA)
 
-from wrf import ALL_TIMES, getvar
+from wrf import ALL_TIMES, getvar, interplevel
 from netCDF4 import Dataset as DS
 
 import pandas as pd
@@ -30,15 +30,22 @@ __all__ = [
 #------------------------------------------------------------------------------- general
         'x2iris_',
         'x2nc_',
+        'xarea_weighted_',
         'xds_',
         'xmean_',
         'xmeanT_',
+        'xsum_',
+        'xsumT_',
         'xres_daily_',
         'xres_monthly_',
         'xres_seasonal_',
         'xres_annual_',
         'xresample_',
         'xu2u_',
+        'xxy_slice_',
+        'xsmth_',
+        'xdiv_',
+        'xcurl_',
         'XDA',
         'XDS',
 #------------------------------------------------------------------------------- gsod
@@ -52,6 +59,7 @@ __all__ = [
         'DS',
         'getvar_',
         'cmg_read_',
+        'interplevel'
         ]
 
 
@@ -67,16 +75,77 @@ def x2iris_(da):
     return o.to_iris()
 
 
-def x2nc_(da, fn):
+def x2nc_(da, fn, **kwargs):
     try:
-        da.to_netcdf(fn)
+        da.to_netcdf(fn, **kwargs)
     except TypeError as _TE:
         try:
+            import re
             _nm = re.findall(r"(?<=attr ')\w+(?=')", _TE.args[0])[0]
             da.attrs.update({_nm: str(da.attrs[_nm])})
-            da.to_netcdf(fn)
+            da.to_netcdf(fn, **kwargs)
         except:
             raise _TE
+
+
+def xxy_slice_(da, i=0):
+    ax_xy = _axXY(da)
+    ind = ind_shape_i_(da.shape, i, axis=ax_xy)
+    return da[ind]
+
+
+def xsmth_(da, m=9, n=9):
+    ax_xy = _axXY(da)
+    nS = nSlice_(da.shape, axis=ax_xy)
+    data = da.data.copy()
+    for i in range(nS):
+        ind = ind_shape_i_(da.shape, i, axis=ax_xy)
+        data[ind] = rMEAN2d_(xxy_slice_(da, i).data, m, n, mode='same')
+    return da.copy(data=data)
+
+
+def xcurl_(uda, vda, rEARTH=6367470):
+    xc, yc = _dimcXY(uda)
+    if (hasattr(xc, 'units') and hasattr(yc, 'units') and 
+        cUnit(xc.units) == cUnit(yc.units) == cUnit('m')):
+        du = np.gradient(uda.data, yc.data, axis=_axY(uda))
+        dv = np.gradient(vda.data, xc.data, axis=_axX(vda))
+    else:
+        lo, la = _loa_pnts_2d(uda)
+        ax_x, ax_y = (1, 0) if _isyx(uda) else (0, 1)
+        du = np.gradient(uda.data, axis=_axY(uda))
+        dv = np.gradient(vda.data, axis=_axX(vda))
+        wx = (np.gradient(np.deg2rad(lo.astype(np.float64)), axis=ax_x) *
+              np.cos(np.deg2rad(la.astype(np.float64))) *
+              rEARTH)
+        wy = np.gradient(np.deg2rad(la.astype(np.float64)), axis=ax_y) * rEARTH
+        du, dv = du / wy, dv / wx
+    o = uda.copy(data=dv - du)
+    o = o.rename('curl')
+    o.attrs.update(units=sqzUnit_(f"{uda.units} m-1"))
+    return o
+
+
+def xdiv_(uda, vda, rEARTH=6367470):
+    xc, yc = _dimcXY(uda)
+    if (hasattr(xc, 'units') and hasattr(yc, 'units') and 
+        cUnit(xc.units) == cUnit(yc.units) == cUnit('m')):
+        du = np.gradient(uda.data, xc.data, axis=_axX(uda))
+        dv = np.gradient(vda.data, yc.data, axis=_axY(vda))
+    else:
+        lo, la = _loa_pnts_2d(uda)
+        ax_x, ax_y = (1, 0) if _isyx(uda) else (0, 1)
+        du = np.gradient(uda.data, axis=_axX(uda))
+        dv = np.gradient(vda.data, axis=_axY(vda))
+        wx = (np.gradient(np.deg2rad(lo.astype(np.float64)), axis=ax_x) *
+              np.cos(np.deg2rad(la.astype(np.float64))) *
+              rEARTH)
+        wy = np.gradient(np.deg2rad(la.astype(np.float64)), axis=ax_y) * rEARTH
+        du, dv = du / wx, dv / wy
+    o = uda.copy(data=du + dv)
+    o = o.rename('divergence')
+    o.attrs.update(units=sqzUnit_(f"{uda.units} m-1"))
+    return o
 
 
 def xds_(fn, **kwargs):
@@ -85,6 +154,28 @@ def xds_(fn, **kwargs):
         return open_mfdataset(fn, concat_dim=axnm, combine='nested', **kwargs)
     else:
         return open_dataset(fn, **kwargs)
+
+
+def xarea_weighted_(da, normalize=False, rEARTH=6367470, llonly=True):
+    pA_ = None
+    if llonly:
+        pA_ = flt_l(
+                [(i, 0) for i in da.dims if i not in(_dimX(da), _dimY(da))],
+                nx=1,
+                )
+    if pA_:
+        tmp = _extract_byAxes(da, *pA_)
+    else:
+        tmp = da
+    data=_area_weights(tmp,
+                       normalize=normalize,
+                       rEARTH=rEARTH,
+                       llonly=llonly)
+    aw = XDA(data=data,
+             coords=tmp.coords,
+             dims=tmp.dims,
+             name='weights')
+    return da.weighted(aw)
 
 
 #-- ccxx ----------------------------------------------------------------------
@@ -375,7 +466,7 @@ def _extract_byAxes(da, axis, sl_i, *vArg):
     return extract_(da, *(i for ii in zip(ax, sl) for i in ii), fancy=False)
 
 #-- _aw -----------------------------------------------------------------------
-def _area_weights(da, normalize=False, rEARTH=6367470):
+def _area_weights(da, normalize=False, rEARTH=6367470, llonly=True):
     """
     ... revised iris.analysis.cartography.area_weights to ignore lon/lat in
         auxcoords ...
@@ -406,33 +497,30 @@ def _area_weights(da, normalize=False, rEARTH=6367470):
                                                                                # Now we create an array of weights for each cell. This process will
                                                                                # handle adding the required extra dimensions and also take care of
                                                                                # the order of dimensions.
-    return robust_bc2_(ll_weights, da.shape, axes=axes)
+    if llonly:
+        return ll_weights if isincr_(axes) else ll_weights.T
+    else:
+        return robust_bc2_(ll_weights, da.shape, axes=axes)
 
 #-- _rg -----------------------------------------------------------------------
 def _rg_func(da, func, rg=None, **funcD):
     tmp = _where_not_msk(da, _ind_loalim(da, **rg)) if rg else da.copy()
+    tmp = xarea_weighted_(tmp)
     return tmp.reduce(func, dim=_dim(da, 'XY'), **funcD)
 
 def _rg_mean(da, rg=None, **funcD):
-    aw = XDA(data=_area_weights(da),
-             coords=da.coords,
-             dims=da.dims,
-             name='weights')
     tmp = _where_not_msk(da, _ind_loalim(da, **rg)) if rg else da.copy()
-    tmp = tmp.weighted(aw)
+    tmp = xarea_weighted_(tmp)
     return tmp.mean(dim=_dim(da, 'XY'), **funcD)
 
 def _poly_func(da, poly, func, inpolyKA={}, **funcD):
     tmp = _where_not_msk(da, _ind_poly(da, poly, **inpolyKA))
+    tmp = xarea_weighted_(tmp)
     return tmp.reduce(func, dim=_dim(da, 'XY'), **funcD)
 
 def _poly_mean(da, poly, inpolyKA={}, **funcD):
-    aw = XDA(data=_area_weights(da),
-             coords=da.coords,
-             dims=da.dims,
-             name='weights')
     tmp = _where_not_msk(da, _ind_poly(da, poly, **inpolyKA))
-    tmp = tmp.weighted(aw)
+    tmp = xarea_weighted_(tmp)
     return tmp.mean(dim=_dim(da, 'XY'), **funcD)
 
 #-- ccxx ----------------------------------------------------------------------
@@ -505,6 +593,33 @@ def xmean_(da, dim=None, add_bounds=False, **kwargs):
         return o
 
 
+def xsum_(da, dim=None, add_bounds=False, **kwargs):
+    if dim is None:
+        return da.sum(**kwargs)
+    else:
+        o = da.sum(dim=dim, **kwargs)
+        if isinstance(dim, str):
+            dim = [dim]
+        _coords = {}
+        for _c in da.coords:
+            _dims = [i for i in dim if i in da[_c].dims]
+            if _dims:
+                _cda = da[_c].mean(dim=_dims, **kwargs)
+                if add_bounds:
+                    _cda = _cda.assign_attrs(dict(
+                        bounds=np.asarray(
+                            [da[_c].data.min(), da[_c].data.max()],
+                            dtype=da[_c].data.dtype,
+                            )))
+                _coords.update({_c: _cda})
+        for _k in _coords:
+            if _k in o.coords:
+                o[_k] = _coords[_k]
+            else:
+                o = o.assign_coords({_k: _coords[_k]})
+        return o
+
+
 def xmeanT_(da,
             add_bounds=False,
             keep_attrs=True,
@@ -512,6 +627,15 @@ def xmeanT_(da,
             **kwargs):
     kwargs.update(dict(keep_attrs=keep_attrs, keepdims=keepdims))
     return xmean_(da, dim=_dimT(da), add_bounds=add_bounds, **kwargs)
+
+
+def xsumT_(da,
+            add_bounds=False,
+            keep_attrs=True,
+            keepdims=True,
+            **kwargs):
+    kwargs.update(dict(keep_attrs=keep_attrs, keepdims=keepdims))
+    return xsum_(da, dim=_dimT(da), add_bounds=add_bounds, **kwargs)
 
 
 def xu2u_(da, other, **kwargs):
@@ -703,7 +827,7 @@ def ds_close_(ds):
             ds_close_(i)
 
 
-def getvar_(fn, var):
+def getvar_(fn, var, _close=False):
     _fn = fn[0] if isIter_(fn) else fn
     if isinstance(_fn, str):
         arg0 = ds_(fn)
@@ -711,7 +835,14 @@ def getvar_(fn, var):
         arg0 = fn
     else:
         raise ValueError("check 1st input argument!")
-    return getvar(arg0, var, timeidx=ALL_TIMES, method='cat')
+    o = getvar(arg0, var, timeidx=ALL_TIMES, method='cat')
+    if _close:
+        ds_close_(arg0)
+    for i in ['XLONG', 'XLAT', 'XLONG_M', 'XLAT_M']:
+        coord = tryattr_(o, i)
+        if coord is not None:
+            coord.attrs.update(dict(units='degree'))
+    return o
 
 
 def cmg_read_(fn, rg={}):

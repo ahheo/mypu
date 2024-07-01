@@ -29,7 +29,11 @@ __all__ = [
         'axs_rct_',
         'axs_shrink_',
         'hspace_ax_',
+        'hspace_axs_',
         'wspace_ax_',
+        'wspace_axs_',
+        'frame_lw_',
+        'spine_c_',
         'get_1st_mappable_obj_',
         'get_1st_patchCollection_',
         'geoTkLbl_',
@@ -496,6 +500,20 @@ def hspace_ax_(ax0, ax1):
     return ax0.get_position().y0 - ax1.get_position().y1
 
 
+def wspace_axs_(axs, sub=.01):
+    from itertools import combinations as comb
+    o = [wspace_ax_(*i) for i in comb(flt_l(axs), 2)]
+    o = np.array([i for i in o if i > 0])
+    return o.min() if o.size > 0  else sub
+
+
+def hspace_axs_(axs, sub=.01):
+    from itertools import combinations as comb
+    o = [hspace_ax_(*i) for i in comb(flt_l(axs), 2)]
+    o = np.array([i for i in o if i > 0])
+    return o.min() if o.size > 0 else sub
+
+
 def get_1st_mappable_obj_(ax):
     for i in ax.children():
         if hasattr(i, 'get_cmap'):
@@ -533,7 +551,7 @@ def aligned_cb_(
     ax = plt.gca() if ax is None else ax
     fig = _fig_ax(ax)
     ppp = get_1st_mappable_obj_(ax) if ppp is None else ppp
-    vh = 'lr' if orientation == 'vertical' else 'bt'
+    vh = 'rl' if orientation == 'vertical' else 'bt'
     lrbt = vh[0] if side else vh[1]
     _i, _w = _guess_cbiw(ax, lrbt) if iw is None else iw
 
@@ -1201,17 +1219,36 @@ def geoTkLbl_(ax):
             )
 
 
-def pstGeoAx_(ax, delta=(30, 20), coastline=True, **kwargs):
+def pstGeoAx_(
+        ax,
+        delta=(30, 20),
+        coastline=True,
+        pad=-.1,
+        xpad=None,
+        ypad=None,
+        c="dimgray",
+        xc=None,
+        yc=None,
+        fsz=7,
+        xfsz=None,
+        yfsz=None,
+        **kwargs):
+    xpad = pad if xpad is None else xpad
+    ypad = pad if ypad is None else ypad
+    xc = c if xc is None else xc
+    yc = c if yc is None else yc
+    xfsz = fsz if xfsz is None else xfsz
+    yfsz = fsz if yfsz is None else yfsz
     proj = ccrs.PlateCarree()
     if coastline:
         ax.coastlines(linewidth=0.2, color="darkgray")
     glD = dict(
             crs=ccrs.PlateCarree(),
             draw_labels={"bottom": "x", "left": "y"},
-            xpadding=-.1,
-            ypadding=-.1,
-            xlabel_style=dict(color="dimgray", fontsize=8),
-            ylabel_style=dict(color="dimgray", fontsize=8),
+            xpadding=xpad,
+            ypadding=ypad,
+            xlabel_style=dict(color=xc, fontsize=xfsz),
+            ylabel_style=dict(color=yc, fontsize=yfsz),
             dms=True,
             lw=.5,
             color="darkgray",
@@ -1336,3 +1373,24 @@ def uv_map_(
               transform=ccrs.PlateCarree(),
               **pK_)
     return o
+
+
+def frame_lw_(ax, lw):
+    if isinstance(ax, mpl.axes.Axes):
+        for i in ax.spines:
+            ax.spines[i].set_linewidth(lw)
+    elif isIter_(ax):
+        for iax in ax:
+            frame_lw_(iax, lw)
+
+
+def spine_c_(ax, c, which='all'):
+    if which == 'all':
+        which = 'tblr'
+    if isinstance(ax, mpl.axes.Axes):
+        for i in ax.spines:
+            if i[0] in which:
+                ax.spines[i].set_color(c)
+    elif isIter_(ax):
+        for iax in ax:
+            spine_c_(iax, c, which=which)

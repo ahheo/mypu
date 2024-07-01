@@ -1428,7 +1428,7 @@ def pSTAT_cube(
         raise Exception(ef0.format(stat))
 
     s4 = ('djf', 'mam', 'jja', 'son')
-    _axT = _dimcT(c).name()
+    ax_t = _dimT(c0)
 
     d_y = dict(year=('year',),
                season=('season', 'seasonyr'),
@@ -1442,11 +1442,11 @@ def pSTAT_cube(
               day=('doy',),
               hour=('hour',))
 
-    dd = dict(hour=(_ica.add_hour, (_axT,), dict(name='hour')),
-              day=(_ica.add_day_of_year, (_axT,), dict(name='doy')),
-              month=(_ica.add_month, (_axT,), dict(name='month')),
-              year=(_ica.add_year, (_axT,), dict(name='year')),
-              season=(_ica.add_season, (_axT,),
+    dd = dict(hour=(_ica.add_hour, (ax_t,), dict(name='hour')),
+              day=(_ica.add_day_of_year, (ax_t,), dict(name='doy')),
+              month=(_ica.add_month, (ax_t,), dict(name='month')),
+              year=(_ica.add_year, (ax_t,), dict(name='year')),
+              season=(_ica.add_season, (ax_t,),
                       dict(name='season', seasons=s4)),
               seasonyr=(seasonyr_cube, (s4,), dict(name='seasonyr')))
 
@@ -1455,7 +1455,7 @@ def pSTAT_cube(
         if f0 in d.keys():
             return d[f0]
         elif isSeason_(f0):
-            return (f0, 'seasonyr')
+            return (f0, 'seasonyr') if with_year else (f0,)
         elif isMonth_(f0):
             return d['month']
         else:
@@ -1468,7 +1468,7 @@ def pSTAT_cube(
             elif isSeason_(x):
                 tmp = {
                         x: (_ica.add_season_membership,
-                            (_axT, x),
+                            (ax_t, x),
                             dict(name=x)),
                         'seasonyr': (seasonyr_cube,
                                      (x,),
@@ -1489,7 +1489,7 @@ def pSTAT_cube(
                 if len(f_) == 1 and isSeason_(f_[0]):
                     tmp = {
                             f_[0]: (_ica.add_season_membership,
-                                    (_axT, f_[0]),
+                                    (ax_t, f_[0]),
                                     dict(name=f_[0])),
                             'seasonyr': (seasonyr_cube,
                                          (f_[0],),
@@ -1528,13 +1528,14 @@ def pSTAT_cube(
             c = c.extract(cstr)
             tmp = c.aggregated_by(dff, getattr(iris.analysis, stat),
                                   **stat_opts)
-            if isSeason_(mmm) and not ismono_(mmmN_(mmm)):
-                tmp = _extract_byAxes(tmp, _axT, np.s_[1:-1])
+            if (isSeason_(mmm) and not ismono_(mmmN_(mmm)) and valid_season and
+                with_year):
+                tmp = _extract_byAxes(tmp, ax_t, np.s_[1:-1])
         else:
             tmp = c.aggregated_by(dff, getattr(iris.analysis, stat),
                                   **stat_opts)
             if x == 'season' and valid_season:
-                tmp = _extract_byAxes(tmp, _axT, np.s_[1:-1])
+                tmp = _extract_byAxes(tmp, ax_t, np.s_[1:-1])
         rm_t_aux_cube(tmp, keep=dff)
         return tmp
 
@@ -2176,7 +2177,10 @@ nmZs = ('z-coord', 'z_coord', 'z coord', 'hgt', 'height', 'bottom_top',
 nmTs = ('date', 'time', 'day', 'month', 'season', 'year', 'second', 'minute')
 
 def _dimcT(c):
-    return c.coord(axis='T', dim_coords=True)
+    try:
+        return c.coord(axis='T', dim_coords=True)
+    except:
+        return None
 
 def _dimcX(c):
     return _dimc(c, 'X')
@@ -2444,7 +2448,7 @@ def _extract_byAxes(c, axis, sl_i, *vArg):
         sl = [sl_i]
 
     if isinstance(c, _Cube):
-        ax = [cnd.coord_dims(i)[0] if isinstance(i, (str, _iDimC)) else i
+        ax = [c.coord_dims(i)[0] if isinstance(i, (str, _iDimC)) else i
               for i in ax]
 
     return extract_(c, *(i for ii in zip(ax, sl) for i in ii), fancy=False)

@@ -58,6 +58,7 @@
 * m2sya_                : season year adjust
 * mmmN_                 : months in season
 * mnN_                  : month order in the calendar
+* mosaicAB01_           : mosaic list
 * nSlice_               : total number of slices
 * nanMask_              : masked array -> array with NaN
 * nli_                  : if item is list flatten it
@@ -164,6 +165,7 @@ __all__ = ['aggr_func_',
            'm2sya_',
            'mmmN_',
            'mnN_',
+           'mosaicAB01_',
            'nSlice_',
            'nanMask_',
            'nli_',
@@ -903,8 +905,8 @@ def schF_keys_(idir, *keys, s_='*',  ext='*', ordered=False, h_=False):
     fn = []
     for i in pm:
         if h_:
-            fn += glob.iglob(os.path.join(idir, '.' + s_ + s.join([i, ext])))
-        fn += glob.glob(os.path.join(idir, s_ + s.join([i, ext])))
+            fn += glob.iglob(os.path.join(idir, '.' + s.join([s_, i, ext])))
+        fn += glob.glob(os.path.join(idir, s.join([s_, i, ext])))
     fn = list(set(fn))
     fn.sort()
     return fn
@@ -2120,6 +2122,8 @@ def aggr_func_(
         axis=None,
         func_=np.ma.mean,
         uniqV=False,
+        fArgs=(),
+        **fkwArgs,
         ):
     """
     ... aggregate function over ndarray ...
@@ -2131,12 +2135,23 @@ def aggr_func_(
 
     kwArgs
     ------
-     axis: along an specified axis otherwise whole flatened data
-    func_: aggregation function (MEAN default)
-    uniqV: output unique Vs
+       axis: along an specified axis otherwise whole flatened data
+      func_: aggregation function (MEAN default)
+      uniqV: output unique Vs
+      fArgs: Args passed to func
+    fkwArgs: kwArgs passed to func
     """
-    #0 checking input arguments
-    arr = np.asarray(xnd)
+    #--------------------------------------------------------------------------0 checking input arguments
+    if not isinstance(xnd, (tuple, list)):
+        arrs=[xnd]
+    else:
+        arrs = xnd
+        msg = "all nd arrays should have a same shape!"
+        assert len(set(arr.shape for arr in arrs))==1, msg
+    if axis is None:
+        arrs = [arr.ravel() for arr in arrs]
+        axis = -1
+    arr0 = arrs[0]
     if len(V) == 1:
         lbl = np.asarray(V[0]).ravel()
     elif len(V) > 1:
@@ -2144,29 +2159,38 @@ def aggr_func_(
     else:
         raise Exception("at least one label array is required, "
                         "but none is provided!")
-    arr, axis = (arr.ravel(), -1) if axis is None else (arr, axis)
-    #print(lbl)
-    if lbl.size != _sz(arr, axis=axis):
+    if lbl.size != _sz(arr0, axis=axis):
         raise Exception("input arguments not matching!")
     uV = pd.unique(lbl)
-    nshp = shp_drop_(arr.shape, axis=axis, replace=uV.size)
-    if isIter_(axis, xi=int):
-        axis = np.unique(rpt_(axis, arr.ndim))
+    if isIter_(axis, xi=int):                                                  # working on multiple axes
+        axis = np.unique(rpt_(axis, arr0.ndim))
         if not all(np.diff(axis) == 1):
-            tmp = tuple(flt_((axis if i == axis[0] else i
-                              for i in range(arr.ndim)
+            tmp = tuple(flt_((axis if i == axis[0] else i                      # transpoing to make working axes continuos
+                              for i in range(arr0.ndim)
                               if i not in axis[1:])))
-            arr = arr.transpose(tmp)
-        arr = flt_ndim_(arr, axis[0], len(axis))
+            arrs = [arr.transpose(tmp) for arr in arrs]
+        arrs = [flt_ndim_(arr, axis[0], len(axis)) for arr in arrs]            # flatening working axes into single axis
         naxi = axis[0]
     else:
         naxi = axis
-    o = np.empty(nshp)
-    for i, ii in enumerate(uV):
-        ind_l = ind_s_(len(nshp), naxi, i)
-        ind_r = ind_s_(arr.ndim, naxi, lbl==ii)
-        o[ind_l] = func_(arr[ind_r], axis=naxi)
-    return (o, uV) if uniqV else o
+    #--------------------------------------------------------------------------1 running func
+    o = []
+    arr0 = arrs[0]
+    for ii in uV:
+        ind_r = ind_s_(arr0.ndim, naxi, lbl==ii)
+        if len(arrs) == 1:
+            o.append(func_(arr0[ind_r], *fArgs, axis=naxi, **fkwArgs))
+        else:
+            o.append(func_([arr[ind_r] for arr in arrs], *fArgs,
+                           axis=naxi, **fkwArgs))
+    return np.stack(o, axis=0)                                                 # return stacked func results
+    #nshp = shp_drop_(arr.shape, axis=axis, replace=uV.size)                   # deprecated method
+    #o = np.empty(nshp)
+    #for i, ii in enumerate(uV):
+    #    ind_l = ind_s_(len(nshp), naxi, i)
+    #    ind_r = ind_s_(arr.ndim, naxi, lbl==ii)
+    #    o[ind_l] = func_(arr[ind_r], axis=naxi)
+    #return (o, uV) if uniqV else o
 
 
 def el_join_(caL, jointer='.'):
@@ -2804,3 +2828,21 @@ def aw_loa_bnds_(lob, lab, rEARTH=6367470):
         areas = radius_sqr * ylen * xlen
 
     return np.abs(areas)                                                       # we use abs because backwards bounds (min > max) give negative areas.
+
+
+def mosaicAB01_(*args):
+    """
+    ... get mosaic listoflist for subplots ...
+    """
+    if len(args) == 2:
+        m, n = args
+    elif len(args) == 1:
+        m, n = args[0]
+    else:
+        raise ValueError("check if as 'm, n' or '(m, n)'!")
+    import string
+    y = np.array([i for i in string.ascii_letters[:m]])
+    x = np.arange(n)
+    xx, yy = np.meshgrid(x, y)
+    o = np.array(el_join_((yy.ravel(), xx.ravel()), ''))
+    return o.reshape((m, n)).tolist()
