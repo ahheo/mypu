@@ -21,8 +21,8 @@ from shapely.geometry import Polygon
 from scipy.sparse import csc_matrix, diags
 
 from .ffff import *
-from .cccc import (ax_fn_mp_, _extract_byAxes, _loa, _dimcXY,
-                   half_grid_, _isyx)
+from .ccxx import *
+from .cccc import ax_fn_mp_
 
 
 __all__ = ['rgd_scipy_',
@@ -34,20 +34,6 @@ __all__ = ['rgd_scipy_',
 
 def _lo_rb(lo):
     return 180 if np.any(lo < 0) else 360
-
-
-def _get_ll_pnts(lo, la, isyx):
-    if lo.ndim == 1:
-        if isyx:
-            x, y = np.meshgrid(lo.points, la.points)
-        else:
-            y, x = np.meshgrid(la.points, lo.points)
-    if lo.ndim == 2:
-        if isyx:
-            x, y = lo.points, la.points
-        else:
-            x, y = lo.points.T, la.points.T
-    return (x, y)
 
 
 def _lr(x2d, isyx, rb=180):
@@ -72,20 +58,18 @@ def _is_crcl(x2d, isyx):
     return np.diff(_lr(x2d, isyx)) < _lld(x2d) * 1.5
 
 
-def rgd_scipy_(src_cube, target_cube,
+def rgd_scipy_(src_, target_,
                method='linear', fill_value=None, rescale=False,
                cp_target_mask=False):
     #from scipy.interpolate import griddata
-    dmap = _dmap(src_cube, target_cube)
-    loT, laT = _loa(target_cube)
-    loS, laS = _loa(src_cube)
-    if loT is None or loS is None:
+    dmap = _dmap(src_, target_)
+    if any(i is None for i in (*loa_(target_), *loa_(src_))):
         raise Exception("missing longitude/latitude coords.")
-    isyxT = _isyx(target_cube)
-    isyxS = _isyx(src_cube)
+    isyxT = isyx_(target_)
+    isyxS = isyx_(src_)
     #2d longitude/latitude points
-    xT, yT = _get_ll_pnts(loT, laT, isyxT)
-    xS, yS = _get_ll_pnts(loS, laS, isyxS)
+    xT, yT = loa_pnts_2d_(target_)
+    xS, yS = loa_pnts_2d_(src_)
     lT, rT = _lr(xT, isyxT)
     xT = rpt_(xT, lT + 360, lT)
     xS = rpt_(xS, lT + 360, lT)
@@ -93,7 +77,7 @@ def rgd_scipy_(src_cube, target_cube,
         rb = lT + 180
         xS = (rpt_(xS, rb, rb -360), rpt_(xS, rb + 360, rb))
 
-    shT, shS = np.asarray(target_cube.shape), np.asarray(src_cube.shape)
+    shT, shS = np.asarray(target_.shape), np.asarray(src_.shape)
     xydimT = tuple(dmap.keys())
     xydimS = tuple(dmap.values())
 
@@ -102,8 +86,8 @@ def rgd_scipy_(src_cube, target_cube,
          nsh[dmap[i]] = shT[i]
     nsh = tuple(nsh)
     data = np.empty(nsh)
-    dataS = nanMask_(src_cube.data)
-    dataT = target_cube[ind_shape_i_(shT, 0, axis=xydimT)].data
+    dataS = nanMask_(src_.data)
+    dataT = target_[ind_shape_i_(shT, 0, axis=xydimT)].data
     if nSlice_(shS, xydimS) > 20:
         ax_fn_mp_(dataS, xydimS, _regrid_slice, data, xS, yS, xT, yT,
                   method, np.nan, rescale)
@@ -117,19 +101,19 @@ def rgd_scipy_(src_cube, target_cube,
     if cp_target_mask and np.ma.is_masked(dataT):
         nmsk |= robust_bc2_(dataT.mask, nsh, axes=xydimS)
     fill_value = fill_value if fill_value\
-                 else (src_cube.data.fill_value
-                       if hasattr(src_cube.data, 'fill_value') else 1e+20)
+                 else (src_.data.fill_value
+                       if hasattr(src_.data, 'fill_value') else 1e+20)
     data[nmsk] = fill_value
     data = np.ma.MaskedArray(data, nmsk)
     #dims for new cube
-    dimc_dim = _get_dimc_dim(src_cube, target_cube)
-    auxc_dim = _get_auxc_dim(src_cube, target_cube, dmap)
+    dimc_dim = _get_dimc_dim(src_, target_)
+    auxc_dim = _get_auxc_dim(src_, target_, dmap)
 
-    return _Cube(data, standard_name=src_cube.standard_name,
-                          long_name=src_cube.long_name,
-                          var_name=src_cube.var_name, units=src_cube.units,
-                          attributes=src_cube.attributes,
-                          cell_methods=src_cube.cell_methods,
+    return _Cube(data, standard_name=src_.standard_name,
+                          long_name=src_.long_name,
+                          var_name=src_.var_name, units=src_.units,
+                          attributes=src_.attributes,
+                          cell_methods=src_.cell_methods,
                           dim_coords_and_dims=dimc_dim,
                           aux_coords_and_dims=auxc_dim,
                           aux_factories=None,
@@ -138,8 +122,8 @@ def rgd_scipy_(src_cube, target_cube,
 
 def _get_dimc_dim(src_cube, target_cube):
     dimc_dim = []
-    xcT, ycT = _dimcXY(target_cube)
-    xcS, ycS = _dimcXY(src_cube)
+    xcT, ycT = dimcXY_(target_cube)
+    xcS, ycS = dimcXY_(src_cube)
     xydimS = src_cube.coord_dims(xcS) + src_cube.coord_dims(ycS)
     for c in src_cube.dim_coords:
         dim = src_cube.coord_dims(c)[0]
@@ -190,8 +174,8 @@ def _regrid_slice(data, xS, yS, xT, yT, method, fill_value, rescale):
 
 
 def _dmap(src_cube, target_cube):
-    xT, yT = _dimcXY(target_cube)
-    xS, yS = _dimcXY(src_cube)
+    xT, yT = dimcXY_(target_cube)
+    xS, yS = dimcXY_(src_cube)
     if xT is None or xS is None:
         raise Exception("missing 'x'/'y' dimcoord")
     return {target_cube.coord_dims(yT)[0]: src_cube.coord_dims(yS)[0],
@@ -239,7 +223,7 @@ def _bnds_2d_3d(bounds, shp, ax):
 
 def _bnds_2p_4p(bounds, isX_=True):
     p4_ = (0, 0, 1, 1) if isX_ else (0, 1, 1, 0)
-    return np.stack([_extract_byAxes(bounds, -1, i) for i in p4_],
+    return np.stack([extract_byAxes_(bounds, -1, i) for i in p4_],
                     axis=-1)
 
 
@@ -288,7 +272,7 @@ def _slice_ll_pnts(coord, shp, ax, df_=False):
 
 
 def _slice_ll_bpd(cube_slice):
-    lo, la = _loa(cube_slice)
+    lo, la = loa_(cube_slice)
     shp = cube_slice.shape
     lo_d = cube_slice.coord_dims(lo)
     la_d = cube_slice.coord_dims(la)
@@ -437,7 +421,7 @@ class POLYrgd:
         # Snapshot the state of the cubes to ensure that the regridder
         # is impervious to external changes to the original source cubes.
         self._src_cube = src_cube.copy()
-        xT, yT = _dimcXY(target_cube)
+        xT, yT = dimcXY_(target_cube)
         xydT = target_cube.coord_dims(xT) + target_cube.coord_dims(yT)
         self._target_cube = target_cube[ind_shape_i_(target_cube.shape,
                                                      0,
@@ -447,7 +431,7 @@ class POLYrgd:
 
     def _info(self, out=False):
         if self._regrid_info is None:
-            xS, yS = _dimcXY(self._src_cube)
+            xS, yS = dimcXY_(self._src_cube)
             _S = self._src_cube.coord_dims(xS) + self._src_cube.coord_dims(yS)
             ind = ind_shape_i_(self._src_cube.shape, 0, axis=_S)
             self._regrid_info = _rgd_poly_info(self._src_cube[ind],
@@ -461,9 +445,9 @@ class POLYrgd:
         if valid_check:
             if not isinstance(src, _Cube):
                 raise TypeError("'src' must be a Cube")
-            loG, laG = _loa(self._src_cube)
+            loG, laG = loa_(self._src_cube)
             src_grid = (loG.copy(), laG.copy())
-            loS, laS = _loa(src)
+            loS, laS = loa_(src)
             #if (loS, laS) != src_grid:
             if not (np.array_equiv(loS.points, loG.points) and 
                     np.array_equiv(laS.points, laG.points)):

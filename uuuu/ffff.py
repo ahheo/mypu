@@ -77,7 +77,8 @@
 * rTime_                : a string of passing time
 * rest_mns_             : rest season named with month abbreviation
 * robust_bc2_           : robust alternative for numpy.broadcast_to
-* rpt_                  : values in cylinder axis           --> extract_win_
+* rpt_                  : values in a period axis           --> extract_win_
+* rpt360_               : values in an axis with period = 360
 * schF_keys_            : find files by key words
 * shp_drop_             : drop dims specified (and replace if desired)
 * slctStrL_             : select string list include or exclude substr(s)
@@ -87,6 +88,7 @@
 * timerMain_            : decorator for executable function
 * tryattr_              : safely getattr
 * uniqL_                : unique elements of list
+* upd_                  : update a dictionary
 * valid_seasons_        : if provided seasons valid
 * valueEqFront_         : move elements equal specified value to front
 * windds2uv_            : u v from wind speed and direction
@@ -185,6 +187,7 @@ __all__ = ['aggr_func_',
            'rest_mns_',
            'robust_bc2_',
            'rpt_',
+           'rpt360_',
            'schF_keys_',
            'shp_drop_',
            'slctStrL_',
@@ -194,6 +197,7 @@ __all__ = ['aggr_func_',
            'timerMain_',
            'tryattr_',
            'uniqL_',
+           'upd_',
            'valid_seasons_',
            'valueEqFront_',
            'windds2uv_']
@@ -236,12 +240,44 @@ def rpt_(
 
     assert lb < rb, 'left bound should not greater than right bound!'
 
-    if isIter_(x):
+    if isIter_(x) and not isinstance(x, np.ndarray):
         x = np.asarray(x)
         if not np.issubdtype(x.dtype, np.number):
             raise Exception('data not interpretable')
 
     return (x-lb) % (rb-lb) + lb
+
+
+def rpt360_(
+        x,
+        rb=360,
+        ):
+    """
+    ... map to value(s) in an axis with period = 360 ...
+
+    Args
+    ----
+    x: to be mapped (numeric array_like)
+
+    kwArgs
+    ------
+    rb: right bound of a period axis (default 360)
+
+    Returns
+    -------
+    normal value in this period axis
+
+    Notes
+    -----
+    list, tuple transfered as np.ndarray
+
+    Examples
+    --------
+    >>> rpt360_(355, 180)
+    Out: -5
+    """
+
+    return rpt_(x, rb=rb, lb=rb-360)
 
 
 def ss_fr_sl_(sl):
@@ -794,10 +830,12 @@ def nanMask_(data):
     ... give nan where masked ...
     """
     if np.ma.isMaskedArray(data):
+        o = data.data.copy()
         if np.ma.is_masked(data):
-            data.data[data.mask] = np.nan
-        data = data.data
-    return data
+            o[np.ma.getmaskarray()] = np.nan
+        return o
+    else:
+        return data
 
 
 def rPeriod_(p_bounds, TeX_on=False):
@@ -2846,3 +2884,11 @@ def mosaicAB01_(*args):
     xx, yy = np.meshgrid(x, y)
     o = np.array(el_join_((yy.ravel(), xx.ravel()), ''))
     return o.reshape((m, n)).tolist()
+
+
+def upd_(d, **kwargs):
+    """
+    ... update a dictionary ...
+    """
+    if kwargs:
+        d.update(kwargs)

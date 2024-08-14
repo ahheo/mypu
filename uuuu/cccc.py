@@ -920,12 +920,13 @@ def _unify_coord_attrs(cL, coord_names=None):
 def _unify_time_units(cL):
     CLD0 = 'proleptic_gregorian'
     CLD = 'gregorian'
-    clds = [_dimcT(c).units.calendar for c in cL]
+    _cT = lambda x: x.coord(axis='T')
+    clds = [_cT(c).units.calendar for c in cL]
     if len(ouniqL_(clds)) > 1:
         for c in cL:
-            ctu = _dimcT(c).units
+            ctu = _cT(c).units
             if ctu.calendar == CLD0:
-                _dimcT(c).units = cUnit(ctu.origin, CLD)
+                _cT(c).units = cUnit(ctu.origin, CLD)
     iris.util.unify_time_units(cL)
 
 
@@ -1980,10 +1981,8 @@ def corr_cube_(cube_a, cube_b,
 
 
 def myAuxTime_(
-        year,
-        month,
-        day,
-        *hms,
+        ymdhms,
+        delta='day',
         unit='days since 1900-1-1',
         calendar='standard',
         ):
@@ -1998,7 +1997,14 @@ def myAuxTime_(
         unit, calendar (string): see cf_unit
     """
     _unit = cUnit(unit, calendar=calendar)
-    dnum = _unit.date2num(datetime(year, month, day, *hms))
+    if isinstance(ymdhms, str):
+        dnum = _unit.date2num(iterDT_(ymdhms, delta=delta))
+    elif len(ymdhms) > 3:
+        dnum = _unit.date2num(datetime(*ymdhms))
+    elif len(ymdhms) == 2:
+        dnum = _unit.date2num(datetime(*ymdhms, 1))
+    elif len(ymdhms) == 1:
+        dnum = _unit.date2num(datetime(*ymdhms, 1, 1))
     return _iAuxC(dnum, units=_unit, standard_name='time')
 
 
@@ -2511,29 +2517,36 @@ def _area_weights(c, normalize=False):
     return robust_bc2_(ll_weights, c.shape, axes=axes)
 
 #-- _rg -----------------------------------------------------------------------
-def _rg_func(c, func, rg=None, **funcD):
+def _rg_func(c, func, rg=None, inv=False, **funcD):
     if rg:
         ind = _ind_loalim(c, **rg)
-        tmp = _where_not_msk(c, ind)
+        tmp = _where_not_msk(c, ~ind) if inv else _where_not_msk(c, ind)
     else:
         tmp = c.copy()
     return tmp.collapsed(_dimcXY(tmp), func, **funcD)
 
-def _rg_mean(c, rg=None, **funcD):
+def _rg_mean(c, rg=None, inv=False, **funcD):
     aw = _area_weights(c)
-    return _rg_func(c, iris.analysis.MEAN, rg=rg, weights=aw, **funcD)
+    return _rg_func(c, iris.analysis.MEAN, rg=rg, inv=inv, weights=aw, **funcD)
 
-def _poly_func(c, poly, func, inpolyKA={}, **funcD):
+def _poly_func(c, poly, func, inpolyKA={}, inv=False, **funcD):
     ind = _ind_poly(c, poly, **inpolyKA)
-    tmp = _where_not_msk(c, ind)
+    tmp = _where_not_msk(c, ~ind) if inv else _where_not_msk(c, ind)
     return tmp.collapsed(_dimcXY(tmp), func, **funcD)
 
-def _poly_mean(c, poly, inpolyKA={}, **funcD):
+def _poly_mean(c, poly, inpolyKA={}, inv=False, **funcD):
     aw = _area_weights(c)
     return _poly_func(c, poly, iris.analysis.MEAN,
                       inpolyKA=inpolyKA,
+                      inv=inv,
                       weights=aw,
                       **funcD,
                       )
+
+#-- _xy_slice -----------------------------------------------------------------
+def _xy_slice(c, i=0):
+    ax_xy = _axXY(c)
+    ind = ind_shape_i_(c.shape, i, axis=ax_xy)
+    return c[ind]
 
 #-- ccxx ----------------------------------------------------------------------

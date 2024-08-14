@@ -42,7 +42,6 @@ __all__ = [
         'xres_annual_',
         'xresample_',
         'xu2u_',
-        'xxy_slice_',
         'xsmth_',
         'xdiv_',
         'xcurl_',
@@ -88,25 +87,19 @@ def x2nc_(da, fn, **kwargs):
             raise _TE
 
 
-def xxy_slice_(da, i=0):
-    ax_xy = _axXY(da)
-    ind = ind_shape_i_(da.shape, i, axis=ax_xy)
-    return da[ind]
-
-
 def xsmth_(da, m=9, n=9):
     ax_xy = _axXY(da)
     nS = nSlice_(da.shape, axis=ax_xy)
     data = da.data.copy()
     for i in range(nS):
         ind = ind_shape_i_(da.shape, i, axis=ax_xy)
-        data[ind] = rMEAN2d_(xxy_slice_(da, i).data, m, n, mode='same')
+        data[ind] = rMEAN2d_(_xy_slice(da, i).data, m, n, mode='same')
     return da.copy(data=data)
 
 
 def xcurl_(uda, vda, rEARTH=6367470):
     xc, yc = _dimcXY(uda)
-    if (hasattr(xc, 'units') and hasattr(yc, 'units') and 
+    if (hasattr(xc, 'units') and hasattr(yc, 'units') and
         cUnit(xc.units) == cUnit(yc.units) == cUnit('m')):
         du = np.gradient(uda.data, yc.data, axis=_axY(uda))
         dv = np.gradient(vda.data, xc.data, axis=_axX(vda))
@@ -128,7 +121,7 @@ def xcurl_(uda, vda, rEARTH=6367470):
 
 def xdiv_(uda, vda, rEARTH=6367470):
     xc, yc = _dimcXY(uda)
-    if (hasattr(xc, 'units') and hasattr(yc, 'units') and 
+    if (hasattr(xc, 'units') and hasattr(yc, 'units') and
         cUnit(xc.units) == cUnit(yc.units) == cUnit('m')):
         du = np.gradient(uda.data, xc.data, axis=_axX(uda))
         dv = np.gradient(vda.data, yc.data, axis=_axY(vda))
@@ -503,25 +496,37 @@ def _area_weights(da, normalize=False, rEARTH=6367470, llonly=True):
         return robust_bc2_(ll_weights, da.shape, axes=axes)
 
 #-- _rg -----------------------------------------------------------------------
-def _rg_func(da, func, rg=None, **funcD):
-    tmp = _where_not_msk(da, _ind_loalim(da, **rg)) if rg else da.copy()
+def _rg_func(da, func, rg=None, inv=False, **funcD):
+    tmp = ((_where_not_msk(da, ~_ind_loalim(da, **rg)) if inv else
+            _where_not_msk(da, _ind_loalim(da, **rg)))
+           if rg else da.copy())
     tmp = xarea_weighted_(tmp)
     return tmp.reduce(func, dim=_dim(da, 'XY'), **funcD)
 
-def _rg_mean(da, rg=None, **funcD):
-    tmp = _where_not_msk(da, _ind_loalim(da, **rg)) if rg else da.copy()
+def _rg_mean(da, rg=None, inv=False, **funcD):
+    tmp = ((_where_not_msk(da, ~_ind_loalim(da, **rg)) if inv else
+            _where_not_msk(da, _ind_loalim(da, **rg)))
+           if rg else da.copy())
     tmp = xarea_weighted_(tmp)
     return tmp.mean(dim=_dim(da, 'XY'), **funcD)
 
-def _poly_func(da, poly, func, inpolyKA={}, **funcD):
-    tmp = _where_not_msk(da, _ind_poly(da, poly, **inpolyKA))
+def _poly_func(da, poly, func, inpolyKA={}, inv=False, **funcD):
+    ind = _ind_poly(da, poly, **inpolyKA)
+    tmp = _where_not_msk(da, ~ind) if inv else _where_not_msk(da, ind)
     tmp = xarea_weighted_(tmp)
     return tmp.reduce(func, dim=_dim(da, 'XY'), **funcD)
 
 def _poly_mean(da, poly, inpolyKA={}, **funcD):
-    tmp = _where_not_msk(da, _ind_poly(da, poly, **inpolyKA))
+    ind = _ind_poly(da, poly, **inpolyKA)
+    tmp = _where_not_msk(da, ~ind) if inv else _where_not_msk(da, ind)
     tmp = xarea_weighted_(tmp)
     return tmp.mean(dim=_dim(da, 'XY'), **funcD)
+
+#-- _xy_slice -----------------------------------------------------------------
+def _xy_slice(da, i=0):
+    ax_xy = _axXY(da)
+    ind = ind_shape_i_(da.shape, i, axis=ax_xy)
+    return da[ind]
 
 #-- ccxx ----------------------------------------------------------------------
 

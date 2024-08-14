@@ -8,7 +8,8 @@ import cartopy.crs as ccrs
 import os
 import warnings
 
-from .ffff import nanMask_, kde__, flt_, flt_l, isIter_, rpt_, ind_inRange_
+from .ffff import (nanMask_, kde__, flt_, flt_l, isIter_, rpt_, ind_inRange_,
+                   robust_bc2_, extract_, upd_)
 from .cccc import y0y1_of_cube, extract_period_cube
 from .ccxx import loa_, isyx_
 
@@ -32,6 +33,7 @@ __all__ = [
         'hspace_axs_',
         'wspace_ax_',
         'wspace_axs_',
+        'fg_ax_',
         'frame_lw_',
         'spine_c_',
         'get_1st_mappable_obj_',
@@ -1394,3 +1396,88 @@ def spine_c_(ax, c, which='all'):
     elif isIter_(ax):
         for iax in ax:
             spine_c_(iax, c, which=which)
+
+
+def fg_ax_(
+        ax,
+        name='ne_shaded',
+        resolution='high',
+        extent=None,
+        catch={},
+        zorder=99,
+        alpha=.15,
+        **kwargs,
+        ):
+    import json                                                                # import required packages
+    from PIL import Image
+    Image.MAX_IMAGE_PIXELS = None
+    from matplotlib.image import imread
+    from cartopy.mpl.geoaxes import GeoAxes
+
+    msg = "Axes should be cartopy.mpl.geoaxes.GeoAxes"                         # check axes
+    assert isinstance(ax, GeoAxes), msg
+
+    bgdir = os.getenv(                                                         # get file
+            'CARTOPY_USER_BACKGROUNDS',
+            '/home/clin/Documents/data/cartopy/data/raster/natural_earth',
+            )
+    json_file = os.path.join(bgdir, 'images.json')
+    with open(json_file, 'r') as js_obj:
+        fgD = json.load(js_obj)
+    try:
+        fname = fgD[name][resolution]
+    except KeyError:
+        raise ValueError(
+            f'Image {name!r} and resolution {resolution!r} are not '
+            f'present in the user background image metadata in directory '
+            f'{bgdir!r}')
+    if isinstance(catch, dict):
+        if fname in catch:
+            img = catch[fname]
+        else:
+            img = imread(os.path.join(bgdir, fname))
+            upd_(catch, **{fname: img})
+    else:
+        img = imread(os.path.join(bgdir, fname))
+    if img.ndim == 2:
+        img = robust_bc2_(img, img.shape + (3,), axes=tuple(range(img.ndim)))
+    if fgD[name]['__projection__'] == 'PlateCarree':
+        source_proj = ccrs.PlateCarree()
+    else:
+        raise NotImplementedError('Background image projection undefined')
+
+    if extent is None:                                                         # set extent
+        extent = ax.get_extent()
+
+    imKA_ = dict(alpha=alpha, zorder=zorder,
+                 origin='upper',
+                 transform=source_proj,
+                 )
+    if tuple(extent) == (-180, 180, -90, 90):                                  # global
+        return ax.imshow(img, extent=extent, **imKA_)
+    else:                                                                      # regional
+        lod, lad = 180 / img.shape[1], 90 / img.shape[0]
+        lo = np.arange(img.shape[1]) * lod * 2 + lod - 180
+        la = 90 - np.arange(img.shape[0]) * lad * 2 - lad
+        ind0 = ind_inRange_(la, *extent[2:])
+        if extent[0] < 180 and extent[1] > 180:
+            ind10 = ind_inRange_(lo, extent[0], 180)
+            ind11 = ind_inRange_(lo, 180, extent[1], r_=360)
+            img_ = np.concatenate(
+                    (extract_(img, 1, ind10, 0, ind0),
+                     extract_(img, 1, ind11, 0, ind0)), 
+                    axix=1,
+                    )
+            extent_ = (lo[ind10][0] - lod,
+                       lo[ind11][-1] + lod + 360,
+                       la[ind0][-1] - lad,
+                       la[ind0][0] + lad)
+        else:
+            ind1 = ind_inRange_(lo, *extent[:2])
+            img_ = extract_(img, 1, ind1, 0, ind0)
+            extent_ = (lo[ind1][0] - lod,
+                       lo[ind1][-1] + lod,
+                       la[ind0][-1] - lad,
+                       la[ind0][0] + lad)
+        return ax.imshow(img_, extent=extent_, **imKA_)
+

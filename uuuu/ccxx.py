@@ -49,6 +49,8 @@ __f1dict__ = {
         'rg_mean_': "area-weighted mean upon area within a rectangle",
         'poly_func_': "func upon area within polygon(s)",
         'poly_mean_': "area-weighted mean upon area within a rectangle",
+        ### xy_slice_ --------------------------------------------------------- 
+        'xy_slice_': "get 2d horizontal slice",
         }
 
 __all__ = list(__f1dict__.keys())
