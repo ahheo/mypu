@@ -11,6 +11,9 @@
 * consecutive_          : consecutive functions
 * consecutiveN_         : consecutive numbers
 * date_mv_mon_          : date displace by months
+* date_s_               : string to datetime.date
+* day_last_             : last day: string
+* day_next_             : next day: string
 * dgt_                  : digits of the int part of a number
 * doy2date_             : day of year to datetime
 * edotm_                : end day of this month
@@ -120,6 +123,9 @@ __all__ = ['aggr_func_',
            'consecutive_',
            'consecutiveN_',
            'date_mv_mon_',
+           'date_s_',
+           'day_last_',
+           'day_next_',
            'dgt_',
            'doy2date_',
            'edotm_',
@@ -2892,3 +2898,33 @@ def upd_(d, **kwargs):
     """
     if kwargs:
         d.update(kwargs)
+
+
+def date_s_(s):
+    """
+    ... string to datetime.date ...
+    """
+    from datetime import date
+    if '-' in s:
+        return np.datetime64(s).tolist()
+    elif len(s)==8:
+        return np.datetime64(f"{s[:4]}-{s[4:6]}-{s[6:]}").tolist()
+    else:
+        emsg = f"{s!r} not recognised as a date string"
+        raise ValueError(emsg)
+
+
+def day_last_(s):
+    """
+    ... last day: string ...
+    """
+    from datetime import timedelta
+    return (date_s_(s) - timedelta(days=1)).strftime(r"%Y-%m-%d")
+
+
+def day_next_(s):
+    """
+    ... next day: string ...
+    """
+    from datetime import timedelta
+    return (date_s_(s) + timedelta(days=1)).strftime(r"%Y-%m-%d")

@@ -516,7 +516,7 @@ def _poly_func(da, poly, func, inpolyKA={}, inv=False, **funcD):
     tmp = xarea_weighted_(tmp)
     return tmp.reduce(func, dim=_dim(da, 'XY'), **funcD)
 
-def _poly_mean(da, poly, inpolyKA={}, **funcD):
+def _poly_mean(da, poly, inpolyKA={}, inv=False, **funcD):
     ind = _ind_poly(da, poly, **inpolyKA)
     tmp = _where_not_msk(da, ~ind) if inv else _where_not_msk(da, ind)
     tmp = xarea_weighted_(tmp)
@@ -531,7 +531,7 @@ def _xy_slice(da, i=0):
 #-- ccxx ----------------------------------------------------------------------
 
 
-def xresample_(ds, ff='D', nn=None):
+def xresample_(ds, ff='D', nn=None, method='mean'):
     '''
     ... resample xarray dataset (temporally) ...
     inputs:
@@ -548,27 +548,27 @@ def xresample_(ds, ff='D', nn=None):
     '''
     tD = {_dimT(ds): ff}
     dsr = ds.resample(**tD)
-    o = dsr.mean()
+    o = getattr(dsr, method)()
     if nn:
         tmp = dsr.count()
         o = o.where(tmp >= nn)
     return o
 
 
-def xres_daily_(ds, nn=None):
-    return xresample_(ds, ff='D', nn=nn)
+def xres_daily_(ds, nn=None, method='mean'):
+    return xresample_(ds, ff='D', nn=nn, method=method)
 
 
-def xres_monthly_(ds, nn=None):
-    return xresample_(ds, ff='MS', nn=nn)
+def xres_monthly_(ds, nn=None, method='mean'):
+    return xresample_(ds, ff='MS', nn=nn, method=method)
 
 
-def xres_seasonal_(ds, nn=None):
-    return xresample_(ds, ff='QS-DEC', nn=nn)
+def xres_seasonal_(ds, nn=None, method='mean'):
+    return xresample_(ds, ff='QS-DEC', nn=nn, method=method)
 
 
-def xres_annual_(ds, nn=None):
-    return xresample_(ds, ff='YS', nn=nn)
+def xres_annual_(ds, nn=None, method='mean'):
+    return xresample_(ds, ff='YS', nn=nn, method=method)
 
 
 def xmean_(da, dim=None, add_bounds=False, **kwargs):

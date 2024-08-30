@@ -20,15 +20,16 @@ def _i_poly_to_path(poly, flp=False):
     def _is_closed(coords):
         _lcoords = list(coords)
         return np.array_equal(_lcoords[0], _lcoords[-1])
-    _verts = lambda x: l_flp_(list(x)) if flp else list(x)
+    _2pntsL = lambda x: [tuple(i[:2]) for i in x]
+    _verts = lambda x: l_flp_(_2pntsL(x)) if flp else _2pntsL(x)
     _codes = lambda n: [Path.MOVETO] + [Path.LINETO]*(n - 2) + [Path.CLOSEPOLY]
     _c2p = lambda x: Path(_verts(x), codes=_codes(len(list(x))))
     
-    if hasattr(poly, 'coords') and _is_closed(poly.coords):
-        return _c2p(poly.coords)
-    elif (hasattr(poly, 'exterior') and hasattr(poly.exterior, 'coords') and
+    if (hasattr(poly, 'exterior') and hasattr(poly.exterior, 'coords') and
           _is_closed(poly.exterior.coords)):
         return _c2p(poly.exterior.coords)
+    elif hasattr(poly, 'coords') and _is_closed(poly.coords):
+        return _c2p(poly.coords)
     elif hasattr(poly, 'geoms'):
         tmp = list(poly.geoms) 
         return [_i_poly_to_path(i, flp=flp) for i in tmp]
