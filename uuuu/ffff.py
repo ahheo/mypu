@@ -11,6 +11,7 @@
 * consecutive_          : consecutive functions
 * consecutiveN_         : consecutive numbers
 * date_mv_mon_          : date displace by months
+* date_mv_yr_           : date displace by years
 * date_s_               : string to datetime.date
 * day_last_             : last day: string
 * day_next_             : next day: string
@@ -123,6 +124,7 @@ __all__ = ['aggr_func_',
            'consecutive_',
            'consecutiveN_',
            'date_mv_mon_',
+           'date_mv_yr_',
            'date_s_',
            'day_last_',
            'day_next_',
@@ -2585,24 +2587,49 @@ def date_mv_mon_(date, dmm):
     --------
     >>> date_mv_mon_(datetime.datetime(1999, 1, 1), 18)
     Out: datetime.datetime(2000, 7, 1, 0, 0)
-    >>> date_mv_mon_(datetime.datetime(1999, 1, 31), -18)
-    UserWarning: day of month replaced by 15.
-    Out: datetime.datetime(1997, 7, 15, 0, 0)
+    >>> date_mv_mon_(datetime.datetime(1999, 1, 31), -2)
+    UserWarning: day relpaced by end of this month.
+    Out: datetime.datetime(1998, 11, 30, 0, 0)
     """
     if not isinstance(dmm, int):
         msg = f"'dmm' should be int!"
         raise ValueError(msg)
-    if date.day > 28:
-        msg = "day of month replaced by 15."
-        warnings.warn(msg)
-        date = date.replace(day=15)
+    day = date.day
+    date = date.replace(day=1)
     if 1 <= date.month + dmm <= 12:
-        return date.replace(month=date.month+dmm)
+        o = date.replace(month=date.month+dmm)
     else:
-        return date.replace(
+        o = date.replace(
             year=date.year + (date.month + dmm - 1) // 12,
             month=rpt_(date.month + dmm, 13, 1)
             )
+    xday = edotm_(o.year, o.month).day
+    if xday < day:
+        msg = 'day relpaced by end of this month.'
+        warnings.warn(msg)
+        return o.replace(day=xday)
+    else:
+        return o.replace(day=day)
+
+
+def date_mv_yr_(date, dyy):
+    """
+    ... date with increament of dmm years ...
+
+    Args
+    ----
+    date: datetime object
+     dyy: increament (years); should be int
+
+    Examples
+    --------
+    >>> date_mv_yr_(datetime.datetime(1999, 1, 1), 1)
+    Out: datetime.datetime(2000, 1, 1, 0, 0)
+    >>> date_mv_yr_(datetime.datetime(1999, 1, 31), -2)
+    Out: datetime.datetime(1997, 1, 31, 0, 0)
+    """
+    return date.replace(year=date.year + dyy)
+    
 
 
 def iterDT_(datestr, delta='day'):
@@ -2618,7 +2645,7 @@ def iterDT_(datestr, delta='day'):
     kwArgs
     ------
       delta: one of the following: second, minute, hour, day (default),
-             week, month, can also add a integer as prefix
+             week, month, year, can also add a integer as prefix
 
     Examples
     --------
@@ -2688,7 +2715,9 @@ def iterDT_(datestr, delta='day'):
     while (date0 <= date1):
         emsg = "I don't know the specifiled delta {!r}".format(delta)
         o.append(date0)
-        if delta == 'month':
+        if delta == 'year':
+            date0 = date_mv_yr_(date0, 1)
+        elif delta == 'month':
             date0 = date_mv_mon_(date0, 1)
         elif delta in ('second', 'minute', 'hour', 'day', 'week',):
             incr = timedelta(**{delta+'s': 1})
@@ -2698,6 +2727,8 @@ def iterDT_(datestr, delta='day'):
             if _delta in ('second', 'minute', 'hour', 'day', 'week',):
                 incr = timedelta(**{_delta+'s': int(_n)})
                 date0 += incr
+            elif _delta == 'year':
+                date0 = date_mv_yr_(date0, int(_n))
             elif _delta == 'month':
                 date0 = date_mv_mon_(date0, int(_n))
             else:

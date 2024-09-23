@@ -1,5 +1,5 @@
-from xarray import DataArray as _XDA
-from iris.cube import Cube as _Cube
+from xarray import DataArray as _XDA, Dataset as  _XDS
+from iris.cube import Cube as _Cube, CubeList as _CubeL
 
 from .ffff import *
 from . import cccc as _cc
@@ -87,9 +87,9 @@ def _module(x):
     """
     ... determine the module depending on the type of 1st argument ...
     """
-    if isinstance(x, _Cube):
+    if isinstance(x, (_Cube, _CubeL)):
         return _cc
-    elif isinstance(x, _XDA):
+    elif isinstance(x, (_XDA, _XDS)):
         return _xx
     else:
         msg = ("have no idea about which module should be used! "

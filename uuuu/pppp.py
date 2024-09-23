@@ -9,7 +9,7 @@ import os
 import warnings
 
 from .ffff import (nanMask_, kde__, flt_, flt_l, isIter_, rpt_, ind_inRange_,
-                   robust_bc2_, extract_, upd_)
+                   robust_bc2_, extract_, upd_, schF_keys_)
 from .cccc import y0y1_of_cube, extract_period_cube
 from .ccxx import loa_, isyx_
 
@@ -40,6 +40,7 @@ __all__ = [
         'get_1st_patchCollection_',
         'geoTkLbl_',
         'pstGeoAx_',
+        'mycm',
         #----------------------------------------------------------------------- pd
         'distri_swe_',
         #----------------------------------------------------------------------- cube
@@ -88,7 +89,10 @@ def axVisibleOff_(ax, which='all'):
     which_ = 'tbrl' if which == 'all' else which
     tbrl = dict(t='top', b='bottom', r='right', l='left')
     for i in which_:
-        ax.spines[tbrl[i]].set_visible(False)
+        ax.spines[tbrl[i]].set(
+                visible=False,
+                zorder=0,
+                )
 
 
 def axColor_(ax, color):
@@ -578,11 +582,11 @@ def aligned_cb_(
                 _w]
     elif lrbt == 't':
         caxb = [x0 + (x1 - x0) * (1. - shrink) * shrink_,
-                y1 + _w,
+                y1 + _i,
                 (x1 - x0) * shrink,
                 _w]
     cax = fig.add_axes(caxb)
-    cb = plt.colorbar(ppp, cax, **cD)
+    cb = plt.colorbar(ppp, cax=cax, **cD)
     if lrbt == 'l':
         cax.yaxis.tick_left()
         cax.yaxis.set_label_position('left')
@@ -1481,3 +1485,27 @@ def fg_ax_(
                        la[ind0][0] + lad)
         return ax.imshow(img_, extent=extent_, **imKA_)
 
+
+def f2cmap(fn):
+    rgb = np.load(fn)
+    N, n34 = rgb.shape
+    if rgb.max() > 1:
+        rgb = rgb / 256
+    if n34 == 3:
+        rgb = np.hstack((rgb, np.ones((N, 1))))
+    name = os.path.basename(os.path.splitext(fn)[0])
+    return mpl.colors.LinearSegmentedColormap.from_list(name, rgb, N=N)
+
+
+class _CM:
+    def __init__(self, p):
+        self.Path = p
+        fnL = schF_keys_(p, ext='.npy')
+        for fn in fnL:
+            o = f2cmap(fn)
+            setattr(self, o.name, o)
+            setattr(self, f'{o.name}_r', o.reversed())
+
+
+_here_ = os.path.dirname(__file__)
+mycm = _CM(os.path.join(_here_, 'cmap'))

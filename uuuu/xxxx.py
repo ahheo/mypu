@@ -47,6 +47,7 @@ __all__ = [
         'xcurl_',
         'XDA',
         'XDS',
+        'e5xds_',
 #------------------------------------------------------------------------------- gsod
         'gsod_uvds_',
         'gsod_attrs_',
@@ -149,6 +150,19 @@ def xds_(fn, **kwargs):
         return open_dataset(fn, **kwargs)
 
 
+def e5xds_(fn, **kwargs):
+    ds = xds_(fn, **kwargs)
+    if 'date' in ds.dims:
+        ds = ds.rename_dims(date='time')
+        _f0 = lambda x: f"{x//10000:04d}-{x%10000//100:02d}-{x%100:02d}"
+        _f1 = lambda x:np.datetime64(_f0(x)).astype('datetime64[ns]')
+        _f2 = np.vectorize(_f1)
+        data = _f2(ds.date)
+        ds = ds.reset_index('date').assign_coords(time=data)
+    return ds
+
+
+
 def xarea_weighted_(da, normalize=False, rEARTH=6367470, llonly=True):
     pA_ = None
     if llonly:
@@ -206,7 +220,7 @@ def _dim(da, axis):
 
 #-- _dimc ---------------------------------------------------------------------
 def _dimc(da, axis):
-    if not isinstance(da, XDA):
+    if not isinstance(da, (XDA, XDS)):
         emsg = "'da' is not instance of 'xarray.DataArray'"
         raise TypeError(emsg)
     if isinstance(axis, str):
