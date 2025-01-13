@@ -71,8 +71,10 @@
 * p_least_              : extract aimed period from a list of periods
 * pcorr_                : partial correlation (matrix)
 * pcorr_xyz             : partial correlation (x, y, z)
+* pearsonr2pV_          : p value corresponding to pearson r value
 * prg_                  : string indicating progress status (e.g., '#002/999')
 * pure_fn_              : filename excluding path (& also extension by default)
+* pV2pearsonr_          : pearson r value corresponding to p value
 * rMEAN1d_              : rolling window mean
 * rMEAN2d_              : rolling window mean (2D)
 * rPeriod_              : [1985, 2019] -> '1985-2019'
@@ -184,8 +186,10 @@ __all__ = ['aggr_func_',
            'p_least_',
            'pcorr_',
            'pcorr_xyz',
+           'pearsonr2pV_',
            'prg_',
            'pure_fn_',
+           'pV2pearsonr_',
            'rMEAN1d_',
            'rMEAN2d_',
            'rPeriod_',
@@ -2430,7 +2434,7 @@ def sqzUnit_(s):
     import re
     _isStarStyle = '**' in s
     def _toKD(x):
-        D=re.findall(r'(?<=[a-zA-Z])((\*\*)?-?\d+)', x)
+        D = re.findall(r'(?<=[a-zA-Z])((\*\*)?-?\d+)', x)
         if D:
             if re.findall('(-?\d+\.?\d?[eE]-?\d+)', x):
                 return (None, x)
@@ -2857,7 +2861,7 @@ def ax_any_(x, axis=-1, _where=False):
     return np.where(o) if _where else o
 
 
-def bA2ind_(x, fancy=False):
+def bA2ind_(x, fancy=False, _con=True):
     """
     ... transform boolean array to indices ...
     """
@@ -2866,7 +2870,11 @@ def bA2ind_(x, fancy=False):
         if np.all(ind1ax):
             return slice(None)
         else:
-            return np.where(ind1ax)[0]
+            ii = np.where(ind1ax)[0]
+            if _con:
+                return slice(ii.min(), ii.max()+1)
+            else:
+                return ii 
     o = []
     for i in range(x.ndim):
         o.append(_f(i))
@@ -2959,3 +2967,21 @@ def day_next_(s):
     """
     from datetime import timedelta
     return (date_s_(s) + timedelta(days=1)).strftime(r"%Y-%m-%d")
+
+
+def pV2pearsonr_(N, alpha):
+    """
+    ... pearson r value corresponding to p value ...
+    """
+    from scipy.stats import beta
+    dist = beta(N/2 - 1, N/2 - 1, -1, 2)
+    return dist.isf(alpha)
+
+
+def pearsonr2pV_(N, r):
+    """
+    ... p value corresponding to pearson r value ...
+    """
+    from scipy.stats import beta
+    dist = beta(N/2 - 1, N/2 - 1, -1, 2)
+    return dist.sf(np.abs(r))

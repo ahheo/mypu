@@ -58,6 +58,7 @@ __all__ = [
         'ts_eCube_',
         #----------------------------------------------------------------------- xarray
         'da_map_',
+        'da_hatch_'
         'das_map_',
         'uv_map_',
         ]
@@ -270,18 +271,11 @@ def imp2_(
         fig=None,
         func="quiver",
         proj=None,
-        ext=None,
-        sc=1,
-        axK_={},
-        pK_={},
+        **kwargs,
         ):
     fig = plt.gcf() if fig is None else fig
     ax = fig.add_subplot(*subplotspec, projection=proj)
-    if ext:
-        ax.set_extent(ext, crs=ccrs.PlateCarree())
-    axK_.setdefault("frame_on", False)
-    ax.set(**axK_)
-    o = _ll_cube2(cube0, cube1, axes=ax, func=func, sc=sc, **pK_)
+    o = cube_uv_map_(cube0, cube1, axes=ax, func=func, **kwargs)
     return (ax, o)
 
 
@@ -291,18 +285,11 @@ def imp_(
         fig=None,
         func="pcolormesh",
         proj=None,
-        ext=None,
-        sc=1,
-        axK_={},
-        pK_={},
+        **kwargs,
         ):
     fig = plt.gcf() if fig is None else fig
     ax = fig.add_subplot(*subplotspec, projection=proj)
-    if ext:
-        ax.set_extent(ext, crs=ccrs.PlateCarree())
-    axK_.setdefault("frame_on", False)
-    ax.set(**axK_)
-    o = _ll_cube(cube, axes=ax, func=func, sc=sc, **pK_)
+    o = cube_map_(cube, axes=ax, func=func, **kwargs)
     return (ax, o)
 
 
@@ -328,20 +315,27 @@ def _mapext(rg={}, cube=None):
 
 
 def hatch_cube(cube, **kwargs):
-    kwargs.setdefault('zorder', 5)
-    kwargs.setdefault('colors', 'none')
-    return _ll_cube(cube, func='contourf', **kwargs)
+    if 'pK_' in kwargs:
+        kwargs['pK_'].setdefault('zorder', 5)
+        kwargs['pK_'].setdefault('colors', 'none')
+    return cube_map_(cube, func='contourf', **kwargs)
 
 
-def _ll_cube2(
+def cube_uv_map_(
         cube0,
         cube1,
         axes=None,
         func='quiver',
+        ext=None,
         sc=1,
-        **kwargs,
+        axK_={},
+        pK_={},
         ):
     axes = plt.gca() if axes is None else axes
+    if ext:
+        axes.set_extent(ext, crs=ccrs.PlateCarree())
+    axK_.setdefault("frame_on", False)
+    axes.set(**axK_)
     support = ['quiver', 'barbs', 'streamplot']
     assert func in support, f"func {func!r} not supported!"
     _func = getattr(axes, func)
@@ -349,7 +343,7 @@ def _ll_cube2(
     if lo0.ndim == 2:
         o = _func(lo0.points, la0.points, cube0.data*sc, cube1.data*sc,
                   transform=ccrs.PlateCarree(),
-                  **kwargs)
+                  **pK_)
     else:
         if cube0.coord_dims(lo0)[0] > cube0.coord_dims(la0)[0]:
             x, y = np.meshgrid(lo0.points, la0.points)
@@ -357,28 +351,34 @@ def _ll_cube2(
             y, x = np.meshgrid(la0.points, lo0.points)
         o = _func(x, y, cube0.data*sc, cube1.data*sc,
                   transform=ccrs.PlateCarree(),
-                  **kwargs)
+                  **pK_)
     return o
 
 
-def _ll_cube(
+def cube_map_(
         cube,
         axes=None,
         func='pcolormesh',
+        ext=None,
         sc=1,
-        **kwargs,
+        axK_={},
+        pK_={},
         ):
     axes = plt.gca() if axes is None else axes
+    if ext:
+        axes.set_extent(ext, crs=ccrs.PlateCarree())
+    axK_.setdefault("frame_on", False)
+    axes.set(**axK_)
     support = ['pcolor', 'pcolormesh', 'contour', 'contourf']
     assert func in support, f"func {func!r} not supported!"
     if func in support[-2:]:
         _func = getattr(iplt, func)
-        o = _func(cube.copy(cube.data*sc), axes=axes, **kwargs)
+        o = _func(cube.copy(cube.data*sc), axes=axes, **pK_)
     else:
         lo0, la0 = cube.coord('longitude'), cube.coord('latitude')
         if lo0.ndim == 1:
             _func = getattr(iplt, func)
-            o = _func(cube.copy(cube.data*sc), axes=axes, **kwargs)
+            o = _func(cube.copy(cube.data*sc), axes=axes, **pK_)
         else:
             if hasattr(lo0, 'has_bounds') and lo0.has_bounds():
                 x, y = lo0.contiguous_bounds(), la0.contiguous_bounds()
@@ -387,7 +387,7 @@ def _ll_cube(
             _func = getattr(axes, func)
             o = _func(x, y, cube.data*sc,
                       transform=ccrs.PlateCarree(),
-                      **kwargs)
+                      **pK_)
     return o
 
 
@@ -1313,6 +1313,14 @@ def da_map_(
               transform=ccrs.PlateCarree(),
               **pK_)
     return o
+
+
+def da_hatch_(da, **kwargs):
+    _K = dict(colors='none', zorder=5)
+    _K.update(**kwargs)
+    amsg = "'levels' and/or 'hatches' not specified!"
+    assert 'levels' in _K and 'hatches' in _K, amsg
+    return da_map_(da, func='contourf', **_K)
 
 
 def das_map_(

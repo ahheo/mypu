@@ -68,6 +68,7 @@
 * seasonyr_cube         : season_year auxcoord
 * slice_back_           : slice back to parent (1D)
 * smth_cube             : smoothing cube over XY axes
+* ttest_ind_cube        : t-test for two cubes
 * unique_yrs_of_cube    : unique year points of cube
 * y0y1_of_cube          : starting and ending year of cube
 * yr_doy_cube           : year and day-of-year auxcoord
@@ -162,6 +163,7 @@ __all__ = [
         'seasonyr_cube',
         'slice_back_',
         'smth_cube',
+        'ttest_ind_cube',
         'unique_yrs_of_cube',
         'y0y1_of_cube',
         'yr_doy_cube',
@@ -813,6 +815,9 @@ def get_gwl_y0_(c, gwl, pref=[1861, 1890]):
 def maskNaN_cube(c):
     ind = np.isnan(c.data)
     iris.util.mask_cube(c, ind, in_place=True)
+    _FV = tryattr_(c.data, 'fill_value')
+    _FV = _FV if _FV else 1e20
+    c.data.data[ind] = _FV
 
 
 def maskPOLY_cube(c, poly, masked_out=True, **kwArgs):
@@ -1607,39 +1612,18 @@ def lccs_m2km_(c):
             lccs_m2km_(i)
 
 
-def cubesv_(c, filename,
-            netcdf_format='NETCDF4',
-            local_keys=None,
-            zlib=True,
-            complevel=4,
-            shuffle=True,
-            fletcher32=False,
-            contiguous=False,
-            chunksizes=None,
-            endian='native',
-            least_significant_digit=None,
-            packing=None,
-            fill_value=None):
+def cubesv_(c, filename, **kwargs):
     """
     ... save CUBE to nc with dim_t unlimitted ...
     """
+    iris.FUTURE.save_split_attrs = True
     if isinstance(c, _Cube):
         #repair_lccs_(c) # execute before if necessary
-        udm = _dimcT(c)
-        iris.save(c, filename,
-                  netcdf_format=netcdf_format,
-                  local_keys=local_keys,
-                  zlib=zlib,
-                  complevel=complevel,
-                  shuffle=shuffle,
-                  fletcher32=fletcher32,
-                  contiguous=contiguous,
-                  chunksizes=chunksizes,
-                  endian=endian,
-                  least_significant_digit=least_significant_digit,
-                  packing=packing,
-                  fill_value=fill_value,
-                  unlimited_dimensions=udm)
+        if 'unlimited_dimensions' not in kwargs:
+            udm = _dimcT(c)
+            iris.save(c, filename, unlimited_dimensions=udm, **kwargs)
+        else:
+            iris.save(c, filename, **kwargs)
     elif isMyIter_(c):
         for i, ii in enumerate(c):
             ext = ext_(filename)
@@ -1872,7 +1856,7 @@ def corr_cube_(cube_a, cube_b,
     dim_coords_2 = [coord.name() for coord in cube_2.dim_coords]
     common_dim_coords = list(set(dim_coords_1) & set(dim_coords_2))
     for i in common_dim_coords:
-        cube_1.replace_coord(cube_2.coord(i))
+        replace_coord_(cube_1, cube_2.coord(i))
     # If no coords passed then set to all common dimcoords of cubes.
     if corr_coords is None:
         corr_coords = common_dim_coords
@@ -1978,6 +1962,22 @@ def corr_cube_(cube_a, cube_b,
         dist = beta(n/2. - 1, n/2. - 1, -1, 2)
 
     return (corr_cube, dist.isf(alpha/2.)) if alpha is not None else corr_cube
+
+
+def ttest_ind_cube(cube_a, cube_b, axis=0, **kwargs):
+    from scipy.stats import ttest_ind
+    a = cube_a.data
+    b = cube_b.data
+    kwargs.update(keepdims=False)
+    axis = _ax(cube_a, axis) if isinstance(axis, str) else axis
+    data = ttest_ind(a, b, axis=axis, **kwargs).pvalue
+    o = next(cube_a.slices_over(
+        [_dim(cube_a, i) for i in axis] if isIter_(axis) else
+        _dim(cube_a, axis))).copy(data=data)
+    o.long_name = 'p-value from t-test'
+    o.var_name = 'p'
+    o.units = ''
+    return o
 
 
 def myAuxTime_(

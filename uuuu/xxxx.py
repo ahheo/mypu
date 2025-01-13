@@ -159,6 +159,8 @@ def e5xds_(fn, **kwargs):
         _f2 = np.vectorize(_f1)
         data = _f2(ds.date)
         ds = ds.reset_index('date').assign_coords(time=data)
+    elif 'valid_time' in ds.dims:
+        ds = ds.rename(valid_time='time')
     return ds
 
 
@@ -262,7 +264,7 @@ def _ax(da, axis):
     if len(axis) == 1:
         o = eval(f"_dim{axis.upper()}(da)")
         return da.dims.index(o) if o else None
-    elif axis in da.coords:
+    elif axis in da.dims or axis in da.coords:
         cdims = getattr(da, axis).dims
         return tuple(da.dims.index(i) for i in cdims)
 
