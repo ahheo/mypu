@@ -41,6 +41,7 @@ __all__ = [
         'geoTkLbl_',
         'pstGeoAx_',
         'mycm',
+        'cmnm_lsc_',
         #----------------------------------------------------------------------- pd
         'distri_swe_',
         #----------------------------------------------------------------------- cube
@@ -656,7 +657,10 @@ def axs_abc_(
         **kwargs,
         ):
     fig = _fig_ax(ax)
-    fra = fig.get_figwidth() / fig.get_figheight()
+    if isinstance(fig, mpl.figure.SubFigure):
+        fra = 1
+    else:
+        fra = fig.get_figwidth() / fig.get_figheight()
     dy = abs(dx * fra) if dy is None else dy
     x0, _, _, y1 = _minmaxXYlm(ax)
     kD = dict(ha='left') if dx >= 0 else dict(ha='right')
@@ -1477,7 +1481,7 @@ def fg_ax_(
             ind11 = ind_inRange_(lo, 180, extent[1], r_=360)
             img_ = np.concatenate(
                     (extract_(img, 1, ind10, 0, ind0),
-                     extract_(img, 1, ind11, 0, ind0)), 
+                     extract_(img, 1, ind11, 0, ind0)),
                     axix=1,
                     )
             extent_ = (lo[ind10][0] - lod,
@@ -1517,3 +1521,31 @@ class _CM:
 
 _here_ = os.path.dirname(__file__)
 mycm = _CM(os.path.join(_here_, 'cmap'))
+
+def cmnm_lsc_(
+        cmb=mpl.cm.Spectral_r,
+        cm0=.1,
+        cm1=.9,
+        cmn=None,
+        nmb=mpl.colors.BoundaryNorm,
+        nmv=None,
+        nmk={},
+        ):
+    cmn = f'cmap{np.random.randint(0, 100):03}' if cmn is None else cmn
+    o0 = mpl.colors.LinearSegmentedColormap.from_list(
+            cmn, cmb(np.linspace(cm0, cm1, 256)),
+            )
+    if nmb == mpl.colors.BoundaryNorm:
+        nma = (nmv, 256)
+        nmk_ = dict(extend='both')
+        nmk_.update(**nmk)
+    elif nmb == mpl.colors.Normalize:
+        nma = ()
+        nmk_ = dict(vmin=nmv[0], vmax=nmv[1])
+        nmk_.update(**nmk)
+    else:
+        nma = (nmv,)
+        nmk_ = dict(extend='both')
+        nmk_.update(**nmk)
+    o1 = nmb(*nma, **nmk_)
+    return (o0, o1)

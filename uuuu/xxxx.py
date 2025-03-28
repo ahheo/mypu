@@ -45,6 +45,7 @@ __all__ = [
         'xsmth_',
         'xdiv_',
         'xcurl_',
+        'xmask_poly_',
         'XDA',
         'XDS',
         'e5xds_',
@@ -443,6 +444,11 @@ def _ind_poly(da, poly, **kwArgs):
 
 def _where_not_msk(da, omsk, **kwargs):
     return da.where(omsk, **kwargs)
+
+
+def xmask_poly_(da, poly, **kwargs):
+    ind = _ind_poly(da, poly, **kwargs)
+    return _where_not_msk(da, ind)
 
 #-- _extract_byAxes -----------------------------------------------------------
 def _extract_byAxes(da, axis, sl_i, *vArg):
